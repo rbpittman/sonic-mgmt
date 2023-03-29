@@ -1079,6 +1079,7 @@ class QosSaiBase(QosBase):
                 sys.path.append(sub_folder_dir)
             import qos_param_generator
             qpm = qos_param_generator.QosParamCisco(qosConfigs['qos_params'][dutAsic][dutTopo],
+                                                    duthost,
                                                     bufferConfig)
             qosParams = qpm.run()
         else:
