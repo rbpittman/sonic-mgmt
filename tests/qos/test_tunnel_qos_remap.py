@@ -321,6 +321,8 @@ def test_pfc_pause_extra_lossless_standby(ptfhost, fanouthosts, rand_selected_du
                                             outer_dscp=outer_dscp,
                                             ecn=1)
         # Ingress packet from uplink port
+        # Note: 'testutils.send' must be used to ensure pkt payload is modified, whereas
+        # 'testutils.send_packet' does not modify the payload.
         testutils.send(ptfadapter, src_port, pkt, 1)
         # Get the actual egress port
         result = testutils.verify_packet_any_port(ptfadapter, exp_pkt, dst_ports)
@@ -332,25 +334,30 @@ def test_pfc_pause_extra_lossless_standby(ptfhost, fanouthosts, rand_selected_du
                 break
         pytest_assert(actual_port_name)
         peer_info = leaf_fanout_peer_info(rand_selected_dut, conn_graph_facts, mg_facts, actual_port)
+        # Clear queue watermark
+        get_queue_watermark(rand_selected_dut, actual_port_name, queue, True)
+        # Send initial uncongested traffic to increase the watermark
+        testutils.send(ptfadapter, src_port, pkt, 1000)
+        # Record watermark when under no congestion
+        base_queue_wmk = get_queue_watermark(rand_selected_dut, actual_port_name, queue)
         storm_handler = PFCStorm(rand_selected_dut, fanout_graph_facts, fanouthosts,
-                                    pfc_queue_idx=prio,
-                                    pfc_frames_number=PFC_PKT_COUNT,
-                                    peer_info=peer_info)
+                                 pfc_queue_idx=prio,
+                                 pfc_frames_number=PFC_PKT_COUNT,
+                                 peer_info=peer_info)
         try:
             # Start PFC storm from leaf fanout switch
             start_pfc_storm(storm_handler, peer_info, prio)
-            # Record the queue counter before sending test packet
-            base_queue_count = get_queue_counter(rand_selected_dut, actual_port_name, queue, True)
-            # Send testing packet again
-            testutils.send_packet(ptfadapter, src_port, pkt, 1)
-            # The packet should be paused
-            testutils.verify_no_packet_any(ptfadapter, exp_pkt, dst_ports)
-            # Check the queue counter didn't increase
-            queue_count = get_queue_counter(rand_selected_dut, actual_port_name, queue, False)
-            pytest_assert(base_queue_count == queue_count, "The queue {} for port {} counter increased unexpectedly".format(queue, actual_port_name))
-
+            # Send congested traffic
+            testutils.send(ptfadapter, src_port, pkt, 10000)
         finally:
             stop_pfc_storm(storm_handler)
+        # Clear out packets for futher verification
+        testutils.count_matched_packets_all_ports(ptfadapter, exp_pkt, dst_ports, timeout=0.5)
+        # Record new watermark after congestion and clear
+        queue_wmk = get_queue_watermark(rand_selected_dut, actual_port_name, queue, True)
+        assert queue_wmk > base_queue_wmk, \
+            "Failed to detect congestion due to PFC pause, failed check {} > {}".format(
+                queue_wmk, base_queue_wmk)
 
 
 def test_pfc_pause_extra_lossless_active(ptfhost, fanouthosts, rand_selected_dut, rand_unselected_dut, toggle_all_simulator_ports_to_rand_selected_tor, tbinfo, ptfadapter, conn_graph_facts, fanout_graph_facts):
