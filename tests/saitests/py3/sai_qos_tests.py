@@ -4928,4 +4928,3 @@ class QWatermarkAllPortTest(sai_base_test.ThriftInterfaceDataPlane):
 
         finally:
             self.sai_thrift_port_tx_enable(self.client, asic_type, dst_port_ids)
-
