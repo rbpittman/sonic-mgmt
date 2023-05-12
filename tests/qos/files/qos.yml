@@ -2694,6 +2694,22 @@ qos_params:
                     pkts_num_trig_pfc: 3414
                     packet_size: 1350
                     pkts_num_margin: 4
+                pcbb_multi_xoff_1:
+                    outer_dscp: 2
+                    dscp: 3
+                    ecn: 1
+                    pgs: [2, 3]
+                    pkts_num_trig_pfc: 3414
+                    packet_size: 1350
+                    pkts_num_margin: 4
+                pcbb_multi_xoff_2:
+                    outer_dscp: 6
+                    dscp: 4
+                    ecn: 1
+                    pgs: [4, 6]
+                    pkts_num_trig_pfc: 3414
+                    packet_size: 1350
+                    pkts_num_margin: 4
             wm_buf_pool_lossy:
                 dscp: 8
                 ecn: 1
@@ -2858,6 +2874,22 @@ qos_params:
                     dscp: 4
                     ecn: 1
                     pg: 6
+                    pkts_num_trig_pfc: 3414
+                    packet_size: 1350
+                    pkts_num_margin: 4
+                pcbb_multi_xoff_1:
+                    outer_dscp: 2
+                    dscp: 3
+                    ecn: 1
+                    pgs: [2, 3]
+                    pkts_num_trig_pfc: 3414
+                    packet_size: 1350
+                    pkts_num_margin: 4
+                pcbb_multi_xoff_2:
+                    outer_dscp: 6
+                    dscp: 4
+                    ecn: 1
+                    pgs: [4, 6]
                     pkts_num_trig_pfc: 3414
                     packet_size: 1350
                     pkts_num_margin: 4
@@ -3038,6 +3070,22 @@ qos_params:
                     dscp: 4
                     ecn: 1
                     pg: 6
+                    pkts_num_trig_pfc: 3414
+                    packet_size: 1350
+                    pkts_num_margin: 4
+                pcbb_multi_xoff_1:
+                    outer_dscp: 2
+                    dscp: 3
+                    ecn: 1
+                    pgs: [2, 3]
+                    pkts_num_trig_pfc: 3414
+                    packet_size: 1350
+                    pkts_num_margin: 4
+                pcbb_multi_xoff_2:
+                    outer_dscp: 6
+                    dscp: 4
+                    ecn: 1
+                    pgs: [4, 6]
                     pkts_num_trig_pfc: 3414
                     packet_size: 1350
                     pkts_num_margin: 4
