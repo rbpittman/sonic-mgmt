@@ -620,6 +620,7 @@ class DscpToPgMapping(sai_base_test.ThriftInterfaceDataPlane):
         src_port_ip = self.test_params['src_port_ip']
         src_port_mac = self.dataplane.get_mac(0, src_port_id)
         dscp_to_pg_map = self.test_params.get('dscp_to_pg_map', None)
+        asic_type = self.test_params['sonic_asic_type']
         pkt_dst_mac = router_mac if router_mac != '' else dst_port_mac
 
         print("dst_port_id: %d, src_port_id: %d" %
@@ -643,6 +644,9 @@ class DscpToPgMapping(sai_base_test.ThriftInterfaceDataPlane):
                 4: [4],
                 0: lossy_dscps
             }
+            if 'cisco-8000' in asic_type:
+                pg_dscp_map[0].remove(48)
+                pg_dscp_map[7] = [48]
         else:
             pg_dscp_map = {}
             for dscp, pg in dscp_to_pg_map.items():
