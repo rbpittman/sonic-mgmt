@@ -1338,7 +1338,10 @@ class QosSaiBase(QosBase):
             qpm = qos_param_generator.QosParamCisco(
                       qosConfigs['qos_params'][dutAsic][topo],
                       duthost,
-                      bufferConfig)
+                      dutAsic,
+                      topo,
+                      bufferConfig,
+                      portSpeedCableLength)
 
             qosParams = qpm.run()
         else:
