@@ -79,7 +79,7 @@ def test_encap_dscp_rewrite(ptfhost, upper_tor_host, lower_tor_host,            
     3. Send the generated packets via portchannels
     4. Verify the packets are encapped with expected DSCP value 
     """
-    drop_flow_upper_tor_active_active(verify=True) # No-op if not A-A
+    drop_flow_upper_tor_active_active(verify=True)  # No-op if not A-A
     REQUIRED_DSCP_COMBINATIONS = [
         # DSCP in generated packets, expected DSCP in encapped packets
         (8, 8),
