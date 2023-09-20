@@ -13,7 +13,10 @@ from tests.common.dualtor.mux_simulator_control import set_drop_all             
 from tests.common.dualtor.mux_simulator_control import set_output                               # lgtm[py/unused-import]
 from tests.common.dualtor.mux_simulator_control import simulator_flap_counter                   # lgtm[py/unused-import]
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_upper_tor  # lgtm[py/unused-import]
+from tests.common.dualtor.nic_simulator_control import is_active_active                         # lgtm[py/unused-import]
 from tests.common.dualtor.nic_simulator_control import set_drop_active_active                   # lgtm[py/unused-import]
+from tests.common.dualtor.nic_simulator_control import drop_flow_tor_active_active              # lgtm[py/unused-import]
+from tests.common.dualtor.nic_simulator_control import drop_flow_upper_tor_active_active        # lgtm[py/unused-import]
 from tests.common.dualtor.nic_simulator_control import TrafficDirection
 from tests.common.fixtures.ptfhost_utils import run_icmp_responder, run_garp_service            # lgtm[py/unused-import]
 from tests.common.fixtures.ptfhost_utils import change_mac_addresses                            # lgtm[py/unused-import]
@@ -73,22 +76,6 @@ def drop_flow_lower_tor_all(set_drop_all, set_output, active_standby_ports):    
     """Drop the flow to the lower ToR."""
     direction = "lower_tor"
     return _set_drop_all_factory(set_drop_all, direction, active_standby_ports)
-
-
-@pytest.fixture(scope="function")
-def drop_flow_upper_tor_active_active(active_active_ports, set_drop_active_active):
-    direction = TrafficDirection.UPSTREAM
-    portid = ActiveActivePortID.UPPER_TOR
-
-    def _drop_flow_upper_tor_active_active():
-        logging.debug("Start set drop for upper ToR at %s", time.time())
-        for port in active_active_ports:
-            logging.debug("Set drop on port %s, portid %s, direction %s" % (port, portid, direction))
-        portids = [portid for _ in active_active_ports]
-        directions = [direction for _ in active_active_ports]
-        set_drop_active_active(active_active_ports, portids, directions)
-
-    return _drop_flow_upper_tor_active_active
 
 
 @pytest.fixture(scope="function")
