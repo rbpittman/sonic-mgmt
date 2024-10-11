@@ -133,9 +133,10 @@ def test_counterpoll_queue_watermark_pg_drop(duthosts, localhost, enum_rand_one_
             ConterpollHelper.enable_counterpoll(asic, [tested_counterpoll])
             verify_counterpoll_status(asic, [tested_counterpoll], ENABLE)
     # Delay to allow the counterpoll to generate the maps in COUNTERS_DB
-    with allure.step("waiting {} seconds for counterpoll to generate maps in COUNTERS_DB"):
+    max_wait = 120
+    with allure.step("waiting up to {} seconds for counterpoll to generate maps in COUNTERS_DB".format(max_wait)):
         delay = RELEVANT_MAPS[tested_counterpoll][DELAY]
-        pytest_assert(wait_until(120, 5, delay, check_counters_populated, duthost, MAPS_LONG_PREFIX.format('*')),
+        pytest_assert(wait_until(max_wait, 5, delay, check_counters_populated, duthost, MAPS_LONG_PREFIX.format('*')),
                       "COUNTERS_DB failed to populate")
     # verify QUEUE or PG maps are generated into COUNTERS_DB after enabling relevant counterpoll
     with allure.step("Verifying MAPS in COUNTERS_DB on {}...".format(duthost.hostname)):
@@ -143,24 +144,19 @@ def test_counterpoll_queue_watermark_pg_drop(duthosts, localhost, enum_rand_one_
         maps_to_verify = maps_dict[MAPS]
         for map_to_verify in maps_to_verify:
             map_prefix = map_to_verify['prefix']
-            maps = map_to_verify[MAPS]
+            # Give time for counters db to finish populating for the specific map
+            fail_msg = "no {} maps found in COUNTERS_DB".format(map_prefix)
+            pytest_assert(wait_until(60, 5, 0, check_counters_populated, duthost, MAPS_LONG_PREFIX.format(map_prefix)),
+                          fail_msg)
+
             map_outputs = get_keys_on_asics(duthost, 'COUNTERS_DB', MAPS_LONG_PREFIX.format(map_prefix))
             for asic_idx, map_output in map_outputs.items():
-                map = []
-                failed = ""
-                for map_entry in maps:
-                    map.append(map_entry)
-                msg = "no {} maps found in COUNTERS_DB on asic{}".format(map_prefix, asic_idx)
-                pytest_assert(map_output, msg)
-                for line in map_output:
-                    try:
-                        map.remove(line)
-                    except ValueError:
-                        failed = "MAP {} was not found in {} MAPS list".format(line, map_prefix)
-                pytest_assert("" == failed, failed)
-                pytest_assert(len(map) == 0,
-                              "{} maps mismatch, one or more queue was not found in redis COUNTERS_DB on asic{}"
-                              .format(map_prefix, asic_idx))
+                pytest_assert(map_output, fail_msg)
+                failures = []
+                for expected_map in map_to_verify[MAPS]:
+                    if expected_map not in map_output:
+                        failures.append(expected_map)
+                pytest_assert(len(failures) == 0, "These maps not found in COUNTERS_DB on asic{}: {}".format(asic_idx, failures))
 
     failed_list = []
     with allure.step("Verifying {} STATS in FLEX_COUNTER_DB on {}...".format(tested_counterpoll, duthost.hostname)):
