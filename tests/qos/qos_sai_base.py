@@ -28,6 +28,8 @@ from tests.ptf_runner import ptf_runner
 from tests.common.system_utils import docker  # noqa F401
 from tests.common.errors import RunAnsibleModuleFail
 from tests.common import config_reload
+from .files.cisco.qos_param_generator import QosParamCisco
+from .qos_helpers import dutBufferConfig
 
 logger = logging.getLogger(__name__)
 
@@ -1544,26 +1546,6 @@ class QosSaiBase(QosBase):
                 if 'proxy_arp' in value:
                     logger.info('ARP proxy is {} on {}'.format(value['proxy_arp'], key))
 
-    def dutBufferConfig(self, duthost, dut_asic):
-        bufferConfig = {}
-        try:
-            ns_spec = ""
-            ns = dut_asic.get_asic_namespace()
-            if ns is not None:
-                # multi-asic support
-                ns_spec = " -n " + ns
-            bufferConfig['BUFFER_POOL'] = json.loads(duthost.shell(
-                'sonic-cfggen -d --var-json "BUFFER_POOL"' + ns_spec)['stdout'])
-            bufferConfig['BUFFER_PROFILE'] = json.loads(duthost.shell(
-                'sonic-cfggen -d --var-json "BUFFER_PROFILE"' + ns_spec)['stdout'])
-            bufferConfig['BUFFER_QUEUE'] = json.loads(duthost.shell(
-                'sonic-cfggen -d --var-json "BUFFER_QUEUE"' + ns_spec)['stdout'])
-            bufferConfig['BUFFER_PG'] = json.loads(duthost.shell(
-                'sonic-cfggen -d --var-json "BUFFER_PG"' + ns_spec)['stdout'])
-        except Exception as err:
-            logger.info(err)
-        return bufferConfig
-
     @pytest.fixture(scope='class', autouse=True)
     def dutQosConfig(
         self, duthosts, get_src_dst_asic_and_duts,
@@ -1644,7 +1626,7 @@ class QosSaiBase(QosBase):
                 logger.info("Generator script not implemented for TH5")
                 qosParams = qosConfigs['qos_params'][dutAsic][dutTopo]
             else:
-                bufferConfig = self.dutBufferConfig(duthost, dut_asic)
+                bufferConfig = dutBufferConfig(duthost, dut_asic)
                 pytest_assert(len(bufferConfig) == 4,
                               "buffer config is incompleted")
                 pytest_assert('BUFFER_POOL' in bufferConfig,
@@ -1678,7 +1660,7 @@ class QosSaiBase(QosBase):
                                                             'selected_profile': profileName})
                 qosParams = qpm.run()
         elif is_cisco_device(duthost):
-            bufferConfig = self.dutBufferConfig(duthost, dut_asic)
+            bufferConfig = dutBufferConfig(duthost, dut_asic)
             pytest_assert('BUFFER_POOL' in bufferConfig,
                           'BUFFER_POOL does not exist in bufferConfig')
             pytest_assert('BUFFER_PROFILE' in bufferConfig,
@@ -1687,11 +1669,6 @@ class QosSaiBase(QosBase):
                           'BUFFER_QUEUE does not exist in bufferConfig')
             pytest_assert('BUFFER_PG' in bufferConfig,
                           'BUFFER_PG does not exist in bufferConfig')
-            current_file_dir = os.path.dirname(os.path.realpath(__file__))
-            sub_folder_dir = os.path.join(current_file_dir, "files/cisco/")
-            if sub_folder_dir not in sys.path:
-                sys.path.append(sub_folder_dir)
-            import qos_param_generator
             if (get_src_dst_asic_and_duts['src_dut_index'] ==
                     get_src_dst_asic_and_duts['dst_dut_index'] and
                 get_src_dst_asic_and_duts['src_asic_index'] ==
@@ -1704,7 +1681,7 @@ class QosSaiBase(QosBase):
             if dutTopo not in qosConfigs['qos_params'][dutAsic]:
                 qosConfigs['qos_params'][dutAsic][dutTopo] = {}
 
-            qpm = qos_param_generator.QosParamCisco(
+            qpm = QosParamCisco(
                       qosConfigs['qos_params'][dutAsic][dutTopo],
                       duthost,
                       dutAsic,
