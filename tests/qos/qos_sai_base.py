@@ -28,7 +28,6 @@ from tests.ptf_runner import ptf_runner
 from tests.common.system_utils import docker  # noqa F401
 from tests.common.errors import RunAnsibleModuleFail
 from tests.common import config_reload
-from .files.cisco.qos_param_generator import QosParamCisco
 from .qos_helpers import dutBufferConfig
 
 logger = logging.getLogger(__name__)
@@ -1669,6 +1668,11 @@ class QosSaiBase(QosBase):
                           'BUFFER_QUEUE does not exist in bufferConfig')
             pytest_assert('BUFFER_PG' in bufferConfig,
                           'BUFFER_PG does not exist in bufferConfig')
+            current_file_dir = os.path.dirname(os.path.realpath(__file__))
+            sub_folder_dir = os.path.join(current_file_dir, "files/cisco/")
+            if sub_folder_dir not in sys.path:
+                sys.path.append(sub_folder_dir)
+            import qos_param_generator
             if (get_src_dst_asic_and_duts['src_dut_index'] ==
                     get_src_dst_asic_and_duts['dst_dut_index'] and
                 get_src_dst_asic_and_duts['src_asic_index'] ==
@@ -1681,7 +1685,7 @@ class QosSaiBase(QosBase):
             if dutTopo not in qosConfigs['qos_params'][dutAsic]:
                 qosConfigs['qos_params'][dutAsic][dutTopo] = {}
 
-            qpm = QosParamCisco(
+            qpm = qos_param_generator.QosParamCisco(
                       qosConfigs['qos_params'][dutAsic][dutTopo],
                       duthost,
                       dutAsic,
