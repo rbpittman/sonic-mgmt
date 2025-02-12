@@ -172,7 +172,7 @@ class QosParamCisco(object):
         dscp_to_tc_map_keys = list(dscp_to_tc_map.keys())
         dscp_to_tc_map_vals = list(dscp_to_tc_map.values())
         if tc is not None and tc in dscp_to_tc_map_vals:
-            dscp = int(dscp_to_tc_map_vals.index(tc))
+            dscp = int(dscp_to_tc_map_keys[dscp_to_tc_map_vals.index(tc)])
         return dscp
 
     def get_scheduler_cfg(self):
