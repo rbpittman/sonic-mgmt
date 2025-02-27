@@ -25,7 +25,7 @@ from tests.common.dualtor.dual_tor_utils import upper_tor_host, lower_tor_host, 
 
 from .tunnel_qos_remap_base import build_testing_packet, check_queue_counter,\
     dut_config, qos_config, tunnel_qos_maps, run_ptf_test, toggle_mux_to_host,\
-    setup_module, update_docker_services, swap_syncd, counter_poll_config                               # noqa F401
+    setup_module, update_docker_services, swap_syncd, counter_poll_config, reduce_watermark_interval    # noqa F401
 from .tunnel_qos_remap_base import leaf_fanout_peer_info, start_pfc_storm, \
     stop_pfc_storm, get_queue_counter, get_queue_watermark, disable_packet_aging                        # noqa F401
 from ptf import testutils
