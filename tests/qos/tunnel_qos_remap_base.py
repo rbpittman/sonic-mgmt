@@ -56,12 +56,42 @@ def build_testing_packet(src_ip, dst_ip, active_tor_mac, standby_tor_mac,
     return pkt, exp_tunnel_pkt
 
 
+def get_watermark_interval(duthost):
+    """
+    Return the current dut watermark polling interval
+    """
+    result = duthost.shell("counterpoll show | grep QUEUE_WATERMARK_STAT | egrep -o '[0-9]+'")
+    assert result["rc"] == 0, "Failed to retrieve QUEUE_WATERMARK_STAT interval using 'counterpoll show'"
+    lines = result["stdout_lines"]
+    assert len(lines) == 1, "Invalid number of lines {} during watermark interval retrieval".format(len(lines))
+    line = lines[0]
+    assert line.isdigit(), "Invalid watermark polling interval retrieved {}".format(line)
+    return int(line)
+
+
+@pytest.fixture(scope='class', autouse=True)
+def reduce_watermark_interval(duthost):
+    """
+    Reduce the watermark before the test, then return it to its original value afterwards.
+    """
+    original_interval = get_watermark_interval(duthost)
+    new_interval = 1000
+    result = duthost.shell("counterpoll watermark interval {}".format(new_interval))
+    assert result["rc"] == 0, "Failed to set watermark interval to new value {}".format(new_interval)
+    yield
+    duthost.shell("counterpoll watermark interval {}".format(original_interval))
+    assert result["rc"] == 0, "Failed to reset watermark interval back to original value {}".format(original_interval)
+
+
 def get_queue_watermark(duthost, port, queue, clear_after_read=False):
     """
-    Return the queue watermark for the given port and queue
+    Return the queue watermark for the given port and queue.
+    Waits the current interval plus 1 second for a new watermark update.
+    Should be fast if used in combination with reduce_watermark_interval.
     """
-    # Wait a default interval (60 seconds)
-    time.sleep(60)
+    curr_interval_ms = get_watermark_interval(duthost)
+    curr_interval_s = int(curr_interval_ms // 1000)
+    time.sleep(curr_interval_s + 5)
     cmd = "show queue watermark unicast"
     output = duthost.shell(cmd)['stdout_lines']
     """
