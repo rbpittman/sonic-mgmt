@@ -44,7 +44,7 @@ class QosBase:
     """
     SUPPORTED_T0_TOPOS = [
         "t0", "t0-56", "t0-56-po2vlan", "t0-64", "t0-116", "t0-118", "t0-35", "dualtor-56", "dualtor-64",
-        "dualtor-120", "dualtor", "dualtor-64-breakout", "dualtor-aa-56-tornado", "t0-120", "t0-80", "t0-backend",
+        "dualtor-120", "dualtor", "dualtor-64-breakout", "dualtor-aa", "t0-120", "t0-80", "t0-backend",
         "t0-56-o8v48", "t0-8-lag", "t0-standalone-32", "t0-standalone-64", "t0-standalone-128",
         "t0-standalone-256", "t0-28", "t0-isolated-d16u16s1", "t0-isolated-d16u16s2"
     ]
@@ -1431,6 +1431,7 @@ class QosSaiBase(QosBase):
                 lower_tor_host.shell("sudo cp {} {}".format(file, backup_file))
                 lower_tor_host.shell("sudo rm {}".format(file))
                 lower_tor_host.shell("sudo touch {}".format(file))
+                lower_tor_host.shell("sudo chmod +x {}".format(file))
             except Exception as e:
                 pytest.skip('file {} not found. Exception {}'.format(file, str(e)))
 
@@ -1486,7 +1487,7 @@ class QosSaiBase(QosBase):
             dst_dut.shell("sudo config bgp start all")
 
         """ Start mux conatiner for dual ToR """
-        if is_dualtor_active_standby:
+        if is_dualtor:
             try:
                 lower_tor_host.shell("ls %s" % backup_file)
                 lower_tor_host.shell("sudo cp {} {}".format(backup_file, file))
