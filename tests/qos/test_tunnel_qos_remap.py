@@ -98,10 +98,18 @@ def test_encap_dscp_rewrite(ptfhost, upper_tor_host, lower_tor_host,  # noqa F81
     dualtor_meta = dualtor_info(
         ptfhost, upper_tor_host, lower_tor_host, tbinfo)
     if "cisco-8000" in ptfhost.duthost.facts["asic_type"]:
-        DSCP_COMBINATIONS = list(tunnel_qos_maps['inner_dscp_to_outer_dscp_map'].items())
-        for dscp_combination in REQUIRED_DSCP_COMBINATIONS:
-            assert dscp_combination in DSCP_COMBINATIONS, \
-                "Required DSCP combination {} not in inner_dscp_to_outer_dscp_map".format(dscp_combination)
+        dscps_present = [dscp for dscp, to_dscp in REQUIRED_DSCP_COMBINATIONS]
+        DSCP_COMBINATIONS = REQUIRED_DSCP_COMBINATIONS
+        configured_map = list(tunnel_qos_maps['inner_dscp_to_outer_dscp_map'].items())
+        for mapping in configured_map:
+            if mapping[0] not in dscps_present:
+                DSCP_COMBINATIONS.append(mapping)
+                dscps_present.append(mapping[0])
+        # Add the 1-1 mapping defaults for any DSCP not in the required list
+        for dscp in range(64):
+            if dscp not in dscps_present:
+                DSCP_COMBINATIONS.append((dscp, dscp))
+        assert len(DSCP_COMBINATIONS) == 64, "Invalid calculated DSCP mapping length {}".format(len(DSCP_COMBINATIONS))
     else:
         DSCP_COMBINATIONS = REQUIRED_DSCP_COMBINATIONS
     active_tor_mac = lower_tor_host.facts['router_mac']
