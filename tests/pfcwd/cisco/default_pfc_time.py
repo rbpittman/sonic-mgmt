@@ -1,4 +1,6 @@
-# Verified on Q200 @ 100G port speed. e.g. 687 is bit time to pause for 50ms (clock at 900Mhz).
+from common import tree, d0, dd0, port_to_sai_lane_map, sai_lane_to_slice_ifg_pif, get_mac_port, \
+    is_gb, is_pac, is_gr, is_graphene2
+import sdk
 
 # Input parameters replaced via 'sed'
 param_interface = __PARAM_INTERFACE__  # noqa: F821
@@ -7,19 +9,19 @@ param_success = __PARAM_SUCCESS__      # noqa: F821
 
 def get_ifg_reg_list(slice_idx):
     ''' Gr2 does not have an ifg list, listify '''
-    if is_graphene2:                                 # noqa: F821
-        ifg_root = [tree.slice[slice_idx].ifg]       # noqa: F821
+    if is_graphene2:
+        ifg_root = [tree.slice[slice_idx].ifg]
     else:
-        ifg_root = tree.slice[slice_idx].ifg       # noqa: F821
+        ifg_root = tree.slice[slice_idx].ifg
     return ifg_root
 
 
 def get_ifgb(ifg_root):
     ''' Complex tree register differences for ifgb per asic.
             Takes tree.slice[slice_idx].ifg[ifg_idx] '''
-    if is_graphene2:                               # noqa: F821
+    if is_graphene2:
         ifgb = ifg_root.ifgbe_ra
-    elif is_gr:                               # noqa: F821
+    elif is_gr:
         ifgb = ifg_root.ifgbe_mac
     else:
         ifgb = ifg_root.ifgb
@@ -27,14 +29,14 @@ def get_ifgb(ifg_root):
 
 
 def set_pfc_512bit_time(interface, bit_time, num_serdes_lanes):
-    sai_lane = port_to_sai_lane_map[interface]                               # noqa: F821
-    slice_idx, ifg_idx, serdes_idx = sai_lane_to_slice_ifg_pif(sai_lane)     # noqa: F821
+    sai_lane = port_to_sai_lane_map[interface]
+    slice_idx, ifg_idx, serdes_idx = sai_lane_to_slice_ifg_pif(sai_lane)
     for i in range(num_serdes_lanes):
         ifg_root = get_ifg_reg_list(slice_idx)[ifg_idx]
         ifg_mac = get_ifgb(ifg_root)
-        regval = dd0.read_register(ifg_mac.fc_port_cfg0[serdes_idx + i])     # noqa: F821
+        regval = dd0.read_register(ifg_mac.fc_port_cfg0[serdes_idx + i])
         regval.port_512bit_time = bit_time
-        dd0.write_register(ifg_mac.fc_port_cfg0[serdes_idx + i], regval)     # noqa: F821
+        dd0.write_register(ifg_mac.fc_port_cfg0[serdes_idx + i], regval)
 
 
 def compute_fractional_512bit_value(mac_freq_khz, port_gbps):
@@ -51,13 +53,13 @@ def compute_fractional_512bit_value(mac_freq_khz, port_gbps):
 
 def find_default_bit_time(interface):
     bit_time = None
-    if is_pac or is_gb:                                                       # noqa: F821
+    if is_pac or is_gb:
         bit_time = 5
-    elif is_gr or is_graphene2:                                               # noqa: F821
-        mac_freq_khz = d0.get_int_property(sdk.la_device_property_e_MAC_FREQUENCY)      # noqa: F821
+    elif is_gr or is_graphene2:
+        mac_freq_khz = d0.get_int_property(sdk.la_device_property_e_MAC_FREQUENCY)
         print("Mac frequency khz: {}".format(mac_freq_khz))
 
-        mac_port = get_mac_port(interface)                                    # noqa: F821
+        mac_port = get_mac_port(interface)
         mac_port_speed_enum_val = mac_port.get_speed()
 
         # Find matching speed enum
