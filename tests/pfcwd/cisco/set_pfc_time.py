@@ -1,7 +1,8 @@
 import math
 
-# Replace INTERFACE with appropriate port when used
-arg_interface = "INTERFACE"
+# Input parameters replaced via 'sed'
+param_interface = __PARAM_INTERFACE__  # noqa: F821
+param_success = __PARAM_SUCCESS__      # noqa: F821
 
 
 def get_ifg_reg_list(slice_idx):
@@ -65,7 +66,9 @@ def set_pfc512_bit_sec(interface, time_sec):
     set_pfc_512bit_time(interface, bit_time, num_serdes_lanes=1)
 
 
-# Increase PFC pause time
-num_ms = 50
-print("Setting PFC frame time to {}ms".format(num_ms))
-set_pfc512_bit_sec(arg_interface, num_ms / 1000)
+if __name__ == "__main__":
+    # Increase PFC pause time
+    num_ms = 50
+    print("Setting PFC frame time to {}ms".format(num_ms))
+    set_pfc512_bit_sec(param_interface, num_ms / 1000)
+    print(param_success)

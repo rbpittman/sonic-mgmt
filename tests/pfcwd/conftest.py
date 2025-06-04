@@ -15,6 +15,8 @@ from tests.common.utilities import str2bool
 
 logger = logging.getLogger(__name__)
 
+SET_PFC_TIME_SUCCESS_MSG = "PFC bit time set successful"
+
 
 def pytest_addoption(parser):
     """
@@ -261,7 +263,6 @@ def set_pfc_time_cisco_8000(
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     test_ports = setup_pfc_test['test_ports']
 
-    # Lets limit this to cisco and T2 only.
     if duthost.facts['asic_type'] != "cisco-8000":
         yield
         return
@@ -297,7 +298,8 @@ def set_pfc_timer_cisco_8000(duthost, asic_id, script, port):
     script_name = os.path.basename(script)
     dut_script_path = f"/tmp/{script_name}"
     duthost.copy(src=script, dest=dut_script_path)
-    duthost.shell(f"sed -i 's/INTERFACE/{port}/' {dut_script_path}")
+    duthost.shell(f"sed -i 's/__PARAM_INTERFACE__/\"{port}\"/' {dut_script_path}")
+    duthost.shell(f"sed -i 's/__PARAM_SUCCESS__/\"{SET_PFC_TIME_SUCCESS_MSG}\"/' {dut_script_path}")
     duthost.docker_copy_to_all_asics(
         container_name=f"syncd{asic_id}",
         src=dut_script_path,
@@ -306,4 +308,6 @@ def set_pfc_timer_cisco_8000(duthost, asic_id, script, port):
     asic_arg = ""
     if asic_id:
         asic_arg = f"-n asic{asic_id}"
-    duthost.shell(f"show platform npu script {asic_arg} -s {script_name}")
+    result = duthost.shell(f"show platform npu script {asic_arg} -s {script_name}")
+    success = SET_PFC_TIME_SUCCESS_MSG in result['stdout']
+    assert success, f"Script {script_name} failed to execute correctly, output: {result['stdout']}"
