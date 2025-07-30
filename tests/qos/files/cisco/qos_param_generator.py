@@ -850,8 +850,20 @@ class QosParamCisco(object):
 
             else:  # 8101/Q200
 
+                # Dynamic Threshold change from -2 to 0 change:
+                # ---------------------------------------------
+                #
+                # The last port in each of these MB-fill lists below is responsible and
+                # checked to trigger XOFF. The other ports at 5MB are not intended to
+                # trigger XOFF, but merely to fill the SQG or counterA without dropping
+                # traffic due to the pause threshold at 5MB. Since the pause threshold is
+                # now increasing for the last port from a reduced threshold to 5MB due to
+                # the alpha change, set the number of packets to send on the last port to
+                # 5.1MB to trigger XOFF. Do this for the tests that required this tuning,
+                # namely 1, 2, 3, and 6.
+
                 # 5*10 + 4 = 54 MB
-                sq_occupancies_mb = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4]
+                sq_occupancies_mb = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5.1]
                 params_1 = {"packet_size": packet_size,
                             "ecn": 1,
                             "dscps":      [3, 4, 3, 4, 3,  4,  3,  4,  3,  4,  3],
@@ -863,7 +875,7 @@ class QosParamCisco(object):
                 self.write_params("xon_hysteresis_1", params_1)
 
                 # 3 + 2 + 5*9 + 3(3) = 59 MB
-                sq_occupancies_mb = [3, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 3, 3]
+                sq_occupancies_mb = [3, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 3, 5.1]
                 params_2 = {"packet_size": packet_size,
                             "ecn": 1,
                             "dscps":      [3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4],
@@ -877,7 +889,7 @@ class QosParamCisco(object):
                 # Total: 67.5 MB
                 # lossy: 5(5) = 25
                 # lossless: 3 + 2 + 5(5) + 4 + 3(2) + 2.5 = 42.5
-                sq_occupancies_mb = [3, 5, 5, 5, 5, 5, 2, 5, 5, 5, 5, 5, 4, 3, 3, 2.5]
+                sq_occupancies_mb = [3, 5, 5, 5, 5, 5, 2, 5, 5, 5, 5, 5, 4, 3, 3, 5.1]
                 params_3 = {"packet_size": packet_size,
                             "ecn": 1,
                             "dscps":      [3, self.dscp_queue1, self.dscp_queue0,
@@ -926,7 +938,7 @@ class QosParamCisco(object):
                 # Total: 64MB MB
                 # lossy: 5 MB
                 # lossless: 3 + 2 + 5(9) + 3(3) = 59MB
-                sq_occupancies_mb = [3, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 3, 3]
+                sq_occupancies_mb = [3, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 3, 5.1]
                 params_6 = {"packet_size": packet_size,
                             "ecn": 1,
                             "dscps":      [3, 4, self.dscp_queue1, 3, 4, 3, 4, 3, 4, 3,
