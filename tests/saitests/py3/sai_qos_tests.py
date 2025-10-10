@@ -2632,7 +2632,7 @@ class PFCXonTest(sai_base_test.ThriftInterfaceDataPlane):
                     send_packet(
                         self, src_port_id, pkt2,
                         (pkts_num_leak_out + pkts_num_dismiss_pfc +
-                         hysteresis) // cell_occupancy + margin - 2
+                         hysteresis) // cell_occupancy - margin - 2
                     )
                 else:
                     fill_egress_plus_one(
@@ -2675,7 +2675,7 @@ class PFCXonTest(sai_base_test.ThriftInterfaceDataPlane):
                     fill_leakout_plus_one(
                         self, src_port_id, dst_port_3_id,
                         pkt3, int(self.test_params['pg']), asic_type)
-                    send_packet(self, src_port_id, pkt3, pkts_num_leak_out)
+                    send_packet(self, src_port_id, pkt3, pkts_num_leak_out + margin * 2)
                 else:
                     fill_egress_plus_one(
                         self, src_port_id,
@@ -2704,6 +2704,10 @@ class PFCXonTest(sai_base_test.ThriftInterfaceDataPlane):
                 self.dst_client, asic_type, port_list['dst'][dst_port_3_id])
 
             # recv port pfc
+            if recv_counters[pg] <= recv_counters_base[pg]:
+                print("QOS assertion about to fail")
+                import pdb; pdb.set_trace()
+
             qos_test_assert(
                 self, recv_counters[pg] > recv_counters_base[pg],
                 'unexpectedly not trigger PFC for PG {} (counter: {}), at step {} {}'.format(
@@ -2808,7 +2812,7 @@ class PFCXonTest(sai_base_test.ThriftInterfaceDataPlane):
             step_desc = 'sleep 30 seconds'
             log_message('step {}: {}\n'.format(step_id, step_desc), to_stderr=True)
 
-            time.sleep(30)
+            time.sleep(10)
             # get a snapshot of counter values at recv and transmit ports
             # queue counters value is not of our interest here
             recv_counters, _ = sai_thrift_read_port_counters(self.src_client, asic_type, port_list['src'][src_port_id])

@@ -700,7 +700,7 @@ class TestQosSai(QosSaiBase):
             testParams["cell_size"] = qosConfig[xonProfile]["cell_size"]
 
         self.runPtfTest(
-            ptfhost, testCase="sai_qos_tests.PFCXonTest", testParams=testParams
+            ptfhost, testCase="sai_qos_tests.PFCXonTest", testParams=testParams, pdb=True
         )
 
     @pytest.mark.parametrize(

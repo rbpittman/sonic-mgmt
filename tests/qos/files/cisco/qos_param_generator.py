@@ -43,7 +43,7 @@ class QosParamCisco(object):
         # 2: Number of packets margin for the quantized queue watermark tests.
         asic_params = {"gb": (6144000, "separate", 3072, 384, 1350, 2, 3),
                        "gr": (24576000, "shared", 18000, 384, 1350, 2, 3),
-                       "gr2": (None, None, 1, 512, 64, 1, 3)}
+                       "gr2": (None, None, 1, 512, 64, 3, 3)}
         self.supports_autogen = dutAsic in asic_params and topo == "topo-any"
         if self.supports_autogen:
             # Asic dependent parameters
