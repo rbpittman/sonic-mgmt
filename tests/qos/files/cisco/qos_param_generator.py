@@ -60,7 +60,8 @@ class QosParamCisco(object):
         # 2: Number of packets margin for the quantized queue watermark tests.
         asic_params = {"gb": (6144000, 3072, 384, 1350, 2, 3),
                        "gr": (24576000, 18000, 384, 1350, 2, 3),
-                       "gr2": (None, 1, 512, 64, 1, 3)}
+                       "gr2": (None, 1, 512, 64, 1, 3),
+                       "p200": (None, 1, 512, 64, 1, 3)}
         self.supports_autogen = dutAsic in asic_params and topo == "topo-any"
         if self.supports_autogen:
             # Asic dependent parameters
@@ -77,7 +78,7 @@ class QosParamCisco(object):
             if "dynamic_th" in lossless_prof:
                 dynamic_th = int(lossless_prof["dynamic_th"])
                 alpha = 2 ** dynamic_th
-                if dutAsic == "gr2":
+                if dutAsic in ["gr2", "p200"]:
                     attempted_pause = int((self.ingress_pool_size - self.ingress_pool_headroom) * alpha / (1. + alpha))
                 else:
                     attempted_pause = alpha * self.ingress_pool_size
@@ -103,7 +104,7 @@ class QosParamCisco(object):
                 self.log("Max pause thr bytes:       {}".format(max_pause))
                 pre_pad_pause = min(attempted_pause, max_pause)
 
-            if dutAsic in ["gr", "gr2"]:
+            if dutAsic in ["gr", "gr2", "p200"]:
                 refined_pause_thr = (self.gr_get_hw_thr_buffs(pre_pad_pause // self.buffer_size) *
                                      self.buffer_size)
                 self.log("{} pre-pad pause threshold changed from {} to {}".format(dutAsic, pre_pad_pause,
@@ -136,8 +137,8 @@ class QosParamCisco(object):
                                                       self.buffer_size))
 
             # Hysteresis calculations depending on asic
-            if dutAsic == "gr2":
-                assert "xon_offset" in lossless_prof, "gr2 missing xon_offset from lossless buffer profile"
+            if dutAsic in ["gr2", "p200"]:
+                assert "xon_offset" in lossless_prof, "{} missing xon_offset from lossless buffer profile".format(dutAsic)
                 xon_offset = int(lossless_prof["xon_offset"])
                 self.log("Pre-pad hysteresis bytes: {}".format(xon_offset))
                 # Determine difference between pause thr and hysteresis thr.
@@ -322,7 +323,7 @@ class QosParamCisco(object):
         ''' thr must be in units of buffers '''
         if self.dutAsic == "gr":
             mantissa, exp = self.gr_get_mantissa_exp(thr)
-        elif self.dutAsic == "gr2":
+        elif self.dutAsic in ["gr2", "p200"]:
             mantissa, exp = self.gr2_get_mantissa_exp(thr)
         else:
             assert False, "Invalid asic {} for gr_get_hw_thr_buffs".format(self.dutAsic)
@@ -505,7 +506,7 @@ class QosParamCisco(object):
                                "pkts_num_trig_pfc": self.lossless_drop_thr // self.buffer_size // packet_buffs,
                                "cell_size": self.buffer_size,
                                "packet_size": packet_size}
-            if self.dutAsic == "gr2":
+            if self.dutAsic in ["gr2", "p200"]:
                 lossless_params["pkts_num_margin"] = 8
             self.write_params("wm_buf_pool_lossless", lossless_params)
         if self.should_autogen(["wm_buf_pool_lossy"]):
@@ -517,7 +518,7 @@ class QosParamCisco(object):
                             "pkts_num_fill_egr_min": 0,
                             "cell_size": self.buffer_size,
                             "packet_size": packet_size}
-            if self.dutAsic == "gr2":
+            if self.dutAsic in ["gr2", "p200"]:
                 lossy_params["pkts_num_margin"] = 8
             self.write_params("wm_buf_pool_lossy", lossy_params)
 
@@ -625,7 +626,7 @@ class QosParamCisco(object):
         if self.should_autogen(["wm_q_wm_all_ports"]):
             lossy_lossless_action_thr = min(self.lossy_drop_bytes, self.pause_thr)
             pkts_num_leak_out = 0
-            if self.dutAsic == "gr2":
+            if self.dutAsic in ["gr2", "p200"]:
                 # Send a burst of leakout packets to optimize runtime. Expected leakout is around 950
                 pkts_num_leak_out = 800
             self.log("In __define_q_watermark_all_ports, using min lossy-drop/lossless-pause threshold of {}".format(
