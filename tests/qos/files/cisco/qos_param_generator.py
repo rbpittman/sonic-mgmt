@@ -127,6 +127,14 @@ class QosParamCisco(object):
                 # can divide by buffer size later to get the correct packet count.
                 advertised_hr = packets_hr * self.buffer_size
                 pre_pad_drop = pre_pad_pause + advertised_hr
+            elif dutAsic == "p200":
+                # P200 HR threshold is rx_cgm_float encoded (5b mantissa with implicit MSB, 5b exponent)
+                # with 512B buffer granularity.
+                hr_buffers = int(lossless_prof["xoff"]) // self.buffer_size
+                hw_hr_buffers = self.gr_get_hw_thr_buffs(hr_buffers)
+                self.log("P200 HR threshold rounded from {} to {} buffers".format(hr_buffers, hw_hr_buffers))
+                advertised_hr = hw_hr_buffers * self.buffer_size
+                pre_pad_drop = pre_pad_pause + advertised_hr
             else:
                 pre_pad_drop = pre_pad_pause + int(lossless_prof["xoff"])
 
@@ -138,7 +146,8 @@ class QosParamCisco(object):
 
             # Hysteresis calculations depending on asic
             if dutAsic in ["gr2", "p200"]:
-                assert "xon_offset" in lossless_prof, "{} missing xon_offset from lossless buffer profile".format(dutAsic)
+                assert "xon_offset" in lossless_prof, \
+                    "{} missing xon_offset from lossless buffer profile".format(dutAsic)
                 xon_offset = int(lossless_prof["xon_offset"])
                 self.log("Pre-pad hysteresis bytes: {}".format(xon_offset))
                 # Determine difference between pause thr and hysteresis thr.
