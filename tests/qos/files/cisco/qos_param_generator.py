@@ -515,7 +515,7 @@ class QosParamCisco(object):
                                "pkts_num_trig_pfc": self.lossless_drop_thr // self.buffer_size // packet_buffs,
                                "cell_size": self.buffer_size,
                                "packet_size": packet_size}
-            if self.dutAsic in ["gr2", "p200"]:
+            if self.dutAsic == "gr2":
                 lossless_params["pkts_num_margin"] = 8
             self.write_params("wm_buf_pool_lossless", lossless_params)
         if self.should_autogen(["wm_buf_pool_lossy"]):
@@ -527,7 +527,7 @@ class QosParamCisco(object):
                             "pkts_num_fill_egr_min": 0,
                             "cell_size": self.buffer_size,
                             "packet_size": packet_size}
-            if self.dutAsic in ["gr2", "p200"]:
+            if self.dutAsic == "gr2":
                 lossy_params["pkts_num_margin"] = 8
             self.write_params("wm_buf_pool_lossy", lossy_params)
 
@@ -635,7 +635,7 @@ class QosParamCisco(object):
         if self.should_autogen(["wm_q_wm_all_ports"]):
             lossy_lossless_action_thr = min(self.lossy_drop_bytes, self.pause_thr)
             pkts_num_leak_out = 0
-            if self.dutAsic in ["gr2", "p200"]:
+            if self.dutAsic == "gr2":
                 # Send a burst of leakout packets to optimize runtime. Expected leakout is around 950
                 pkts_num_leak_out = 800
             self.log("In __define_q_watermark_all_ports, using min lossy-drop/lossless-pause threshold of {}".format(
