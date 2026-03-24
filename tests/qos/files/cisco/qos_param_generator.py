@@ -56,12 +56,15 @@ class QosParamCisco(object):
         # TODO: topo-t2 support
         # Per-asic variable description:
         # 0: Max queue depth in bytes
-        # 1: Flow control configuration on this device, either 'separate' or 'shared'.
-        # 2: Number of packets margin for the quantized queue watermark tests.
+        # 1: Number of packets margin for the quantized queue watermark tests.
+        # 2: Bytes per buffer
+        # 3: Packet size preferred by the asic to increase test stability
+        # 4: Number of packets added to the pause threshold to line up with theoretical predictions
+        # 5: Number of packets added to the lossless drop threshold to line up with theoretical predictions
         asic_params = {"gb": (6144000, 3072, 384, 1350, 2, 3),
                        "gr": (24576000, 18000, 384, 1350, 2, 3),
                        "gr2": (None, 1, 512, 64, 1, 3),
-                       "p200": (None, 1, 512, 64, 1, 3)}
+                       "p200": (None, 1, 512, 64, 2, 2)}
         self.supports_autogen = dutAsic in asic_params and topo == "topo-any"
         if self.supports_autogen:
             # Asic dependent parameters
