@@ -462,6 +462,8 @@ def _gather_test_params(tbinfo, duthost, request, duts_minigraph_facts):
     """
 
     swap_syncd = request.config.getoption("--copp_swap_syncd")
+    if swap_syncd is None:
+        swap_syncd = duthost.facts["asic_type"] == "cisco-8000"
     send_rate_limit = request.config.getoption("--send_rate_limit")
     topo = tbinfo["topo"]["name"]
     topo_type = tbinfo["topo"]["type"]
