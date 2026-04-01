@@ -19,6 +19,8 @@ class QosParamCisco(object):
                                                             "Cisco-8101C01-C32"],
                               "x86_64-8102_64h_o-r0": ["Cisco-8102-C64"]}
     VOQ_ASICS = ["gb", "gr"]
+    # CPU queue reservation subtracted from egress lossy pool to get shared size
+    EGRESS_POOL_CPU_QUEUE_RESERVED_BYTES = 4 * 1024 * 1024
 
     LOG_PREFIX = "QosParamCisco: "
 
@@ -94,7 +96,9 @@ class QosParamCisco(object):
             if max_queue_depth is None:
                 dynamic_th = int(self.bufferConfig["BUFFER_PROFILE"]["egress_lossy_profile"]["dynamic_th"])
                 alpha = 2 ** dynamic_th
-                theoretical_drop_thr = int(self.egress_pool_size * alpha / (1. + alpha))
+                egress_pool_reserved = self.EGRESS_POOL_CPU_QUEUE_RESERVED_BYTES if dutAsic == "p200" else 0
+                egress_shared_size = self.egress_pool_size - egress_pool_reserved
+                theoretical_drop_thr = int(egress_shared_size * alpha / (1. + alpha))
                 self.lossy_drop_bytes = (self.gr_get_hw_thr_buffs(theoretical_drop_thr // self.buffer_size) *
                                          self.buffer_size)
                 self.log("Lossy queue drop theoretical {} adjusted to {}".format(theoretical_drop_thr,
