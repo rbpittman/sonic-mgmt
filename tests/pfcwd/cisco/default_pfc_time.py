@@ -54,7 +54,7 @@ elif is_gr or is_graphene2 or is_palladium2:                              # noqa
     mac_freq_khz = d0.get_int_property(sdk.la_device_property_e_MAC_FREQUENCY)      # noqa: F821
     print("Mac frequency khz: {}".format(mac_freq_khz))
 
-    mac_port = get_mac_port(INTERFACE)                                    # noqa: F821
+    mac_port = get_mac_port("INTERFACE")                                    # noqa: F821
     mac_port_speed_enum_val = mac_port.get_speed()
 
     # Find matching speed enum
