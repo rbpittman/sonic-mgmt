@@ -72,6 +72,9 @@ elif is_gr or is_graphene2 or is_palladium2:                              # noqa
     gbps_str = speed[:-1]
     assert gbps_str.isdigit(), "Non-digit speed {}".format(gbps_str)
     gbps = int(gbps_str)
+    if is_palladium2 and gbps == 800:
+        print("Reducing 800G to 400G for P200 PFC 512 bit time calculation")
+        gbps = 400
     print("Port speed gbps: {}".format(gbps))
     bit_time = compute_fractional_512bit_value(mac_freq_khz, gbps)
 
