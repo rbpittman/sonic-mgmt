@@ -135,11 +135,17 @@ class QosParamCisco(object):
                 advertised_hr = packets_hr * self.buffer_size
                 pre_pad_drop = pre_pad_pause + advertised_hr
             elif dutAsic == "p200":
-                # P200 HR threshold is rx_cgm_float encoded (5b mantissa with implicit MSB, 5b exponent)
-                # with 512B buffer granularity.
-                hr_buffers = int(lossless_prof["xoff"]) // self.buffer_size
-                hw_hr_buffers = self.gr_get_hw_thr_buffs(hr_buffers)
-                self.log("P200 HR threshold rounded from {} to {} buffers".format(hr_buffers, hw_hr_buffers))
+                # P200 uses a variant of mantissa/exponent rounding for HR thresholds.
+                xoff_bytes = int(lossless_prof["xoff"])
+                mantissa_len = 4
+                exponent = max(xoff_bytes.bit_length() - mantissa_len, 0)
+                mantissa = xoff_bytes >> exponent
+                if (mantissa << exponent) < xoff_bytes:
+                    mantissa += 1
+                hw_hr_bytes = mantissa << exponent
+                hw_hr_buffers = hw_hr_bytes // self.buffer_size
+                self.log("P200 HR threshold: xoff {} bytes -> {} buffers (mantissa={}, exp={})".format(
+                    xoff_bytes, hw_hr_buffers, mantissa, exponent))
                 advertised_hr = hw_hr_buffers * self.buffer_size
                 pre_pad_drop = pre_pad_pause + advertised_hr
             else:
