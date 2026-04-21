@@ -2318,6 +2318,60 @@ Totals               6450                 6449
             return False
         return not rc['failed']
 
+    def _batch_ping(self, ips, count=3, ns_arg="", ip_type="ipv4"):
+        """
+        Ping multiple IPs in parallel on the DUT using background shell processes.
+
+        Args:
+            ips: List of IP address strings to ping
+            count: Number of ping packets per IP
+            ns_arg: Network namespace argument
+            ip_type: "ipv4" or "ipv6"
+
+        Returns:
+            Set of IPs that responded successfully
+        """
+        if not ips:
+            return set()
+
+        netns_prefix = ""
+        if ns_arg is not DEFAULT_NAMESPACE:
+            netns_prefix = "sudo ip netns exec {} ".format(ns_arg)
+
+        ping_flag = "-6 " if ip_type == "ipv6" else ""
+        validate = socket.inet_aton if ip_type == "ipv4" else lambda ip: socket.inet_pton(socket.AF_INET6, ip)
+
+        ping_parts = []
+        for ip in ips:
+            try:
+                validate(ip)
+            except socket.error:
+                continue
+            ping_parts.append(
+                "({}ping {}-q -c{} {} > /dev/null && echo SUCCESS:{} || echo FAIL:{})".format(
+                    netns_prefix, ping_flag, count, ip, ip, ip
+                )
+            )
+
+        if not ping_parts:
+            return set()
+
+        batch_cmd = " & ".join(ping_parts) + "; wait"
+
+        try:
+            result = self.shell(batch_cmd)
+            output = result.get("stdout", "")
+        except RunAnsibleModuleFail:
+            return set()
+
+        successful_ips = set()
+        for line in output.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("SUCCESS:"):
+                successful_ips.add(line[len("SUCCESS:"):])
+
+        return successful_ips
+
     def is_backend_portchannel(self, port_channel, mg_facts):
         ports = mg_facts["minigraph_portchannels"].get(port_channel)
         # minigraph facts does not have backend portchannel IFs
@@ -2347,35 +2401,48 @@ Totals               6450                 6449
         Returns:
             Dict of Interfaces and their IPv4 address
         """
-        active_ip_intf_cnt = 0
         mg_facts = self.get_extended_minigraph_facts(tbinfo, ns_arg)
         excluded_ports = self.get_backplane_ports()
-        ip_ifaces = {}
+        peer_key = "peer_ipv4" if ip_type == "ipv4" else "peer_ipv6"
+
+        # Collect candidate interfaces that are up and pass filter criteria
+        candidates = []
         for k, v in list(ip_ifs.items()):
             if ((k.startswith("Ethernet") and (k not in excluded_ports) and
                  (not k.startswith("Ethernet-BP")) and not is_inband_port(k)) or
                (k.startswith("PortChannel") and not self.is_backend_portchannel(k, mg_facts))):
-                if ip_type == "ipv4":
-                    # Ping for some time to get ARP Re-learnt.
-                    # We might have to tune it further if needed.
-                    if (v["admin"] == "up" and v["oper_state"] == "up" and
-                            self.ping_v4(v["peer_ipv4"], count=3, ns_arg=ns_arg)):
-                        ip_ifaces[k] = {
-                            "ipv4": v["ipv4"],
-                            "peer_ipv4": v["peer_ipv4"],
-                            "bgp_neighbor": v["bgp_neighbor"]
-                        }
-                        active_ip_intf_cnt += 1
-                elif ip_type == "ipv6":
-                    if (v["admin"] == "up" and v["oper_state"] == "up" and
-                            self.ping_v6(v["peer_ipv6"], count=3, ns_arg=ns_arg)):
-                        ip_ifaces[k] = {
-                            "ipv6": v["ipv6"],
-                            "peer_ipv6": v["peer_ipv6"],
-                            "bgp_neighbor": v["bgp_neighbor"]
-                        }
-                        active_ip_intf_cnt += 1
+                if v["admin"] == "up" and v["oper_state"] == "up":
+                    candidates.append((k, v))
 
+        if not candidates:
+            return {}
+
+        # Ping for some time to get ARP Re-learnt.
+        # We might have to tune it further if needed.
+        # All pings run in parallel on the DUT as background shell processes.
+        successful_ips = self._batch_ping(
+            [v[peer_key] for _, v in candidates],
+            count=3, ns_arg=ns_arg, ip_type=ip_type
+        )
+
+        # Build result dict from successful pings
+        ip_ifaces = {}
+        active_ip_intf_cnt = 0
+        for k, v in candidates:
+            if v[peer_key] in successful_ips:
+                if ip_type == "ipv4":
+                    ip_ifaces[k] = {
+                        "ipv4": v["ipv4"],
+                        "peer_ipv4": v["peer_ipv4"],
+                        "bgp_neighbor": v["bgp_neighbor"]
+                    }
+                elif ip_type == "ipv6":
+                    ip_ifaces[k] = {
+                        "ipv6": v["ipv6"],
+                        "peer_ipv6": v["peer_ipv6"],
+                        "bgp_neighbor": v["bgp_neighbor"]
+                    }
+                active_ip_intf_cnt += 1
                 if isinstance(intf_num, int) and intf_num > 0 and active_ip_intf_cnt == intf_num:
                     break
 
