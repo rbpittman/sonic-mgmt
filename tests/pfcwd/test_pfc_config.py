@@ -2,12 +2,11 @@ import json
 import os
 import pytest
 import logging
-import time
 
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
 from tests.common.config_reload import config_reload
-from tests.common.utilities import update_pfcwd_default_state
+from tests.common.utilities import update_pfcwd_default_state, wait_until
 
 logger = logging.getLogger(__name__)
 
@@ -330,11 +329,15 @@ class TestDefaultPfcConfig(object):
         safe_reload_ignored_dockers = ['dhcp_server', 'dhcp_relay']
         config_reload(duthost, config_source='minigraph', safe_reload=True,
                       safe_reload_ignored_dockers=safe_reload_ignored_dockers)
-        # sleep 20 seconds to make sure configuration is loaded
-        time.sleep(20)
-        res = duthost.command('pfcwd show config')
-        for port_config in res['stdout_lines']:
-            if "ethernet" in port_config.lower():
-                return
-        # If no ethernet port existing in stdout, failed this case.
-        pytest.fail("Failed to start pfcwd after load_minigraph")
+
+        def _pfcwd_configured():
+            res = duthost.command('pfcwd show config', module_ignore_errors=True)
+            if res.get('rc', 1) != 0:
+                return False
+            return any('ethernet' in line.lower() for line in res['stdout_lines'])
+
+        pytest_assert(
+            wait_until(120, 5, 10, _pfcwd_configured),
+            "Failed to start pfcwd after load_minigraph "
+            "(no per-port entries appeared in 'pfcwd show config' within 120s)"
+        )
