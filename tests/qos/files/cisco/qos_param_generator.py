@@ -65,7 +65,7 @@ class QosParamCisco(object):
         asic_params = {"gb": (6144000, 3072, 384, 1350, 2, 3, 0),
                        "gr": (24576000, 18000, 384, 1350, 2, 3, 0),
                        "gr2": (None, 2, 512, 64, 3, 4, -40),
-                       "p200": (None, 1, 512, 64, 2, 2, 0)}
+                       "p200": (None, 62000, 512, 64, 2, 2, 0)}
         self.supports_autogen = dutAsic in asic_params and topo == "topo-any"
         if self.supports_autogen:
             # Asic dependent parameters
