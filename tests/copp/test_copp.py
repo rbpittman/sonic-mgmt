@@ -66,6 +66,8 @@ _TOR_ONLY_PROTOCOL = ["DHCP", "DHCP6"]
 _TEST_RATE_LIMIT_DEFAULT = 600
 _TEST_RATE_LIMIT_MARVELL = 625
 
+_PTF_TEST_CASE_TIMEOUT = 1200
+
 # Protocol to trap ID mapping indicating which trap
 # being for which protocol. Trap ID is used to verify
 # the trap installation status.
@@ -496,6 +498,7 @@ def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
                relax=None,
                debug_level=None,
                device_sockets=device_sockets,
+               timeout=_PTF_TEST_CASE_TIMEOUT,
                is_python3=True)
     return True
 
