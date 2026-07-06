@@ -14,8 +14,9 @@ def pytest_addoption(parser):
     parser.addoption(
         "--copp_swap_syncd",
         action="store_true",
-        default=False,
-        help="Swap syncd container with syncd-rpc container",
+        default=None,
+        help="Swap syncd container with syncd-rpc container. If unspecified, defaults to "
+             "True on cisco-8000 platforms and False on all other platforms.",
     )
     parser.addoption(
         "--send_rate_limit",
