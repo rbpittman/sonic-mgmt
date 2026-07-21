@@ -24,6 +24,12 @@ class QosParamCisco(object):
 
     LOG_PREFIX = "QosParamCisco: "
 
+    # Pool size that is considered to be a DRAM pool.
+    IS_DRAM_POOL_SIZE_THRESHOLD_BYTES = 512 * 2 ** 20
+    # Occupancy at which a single queue evicts to DRAM.
+    # TODO: Consider updating how this is stored. e.g. as a device parameter below.
+    DRAM_SINGLE_QUEUE_EVICT_P200_BYTES = 44 * 2 ** 20
+
     def __init__(self, qos_params, duthost, dutAsic, topo, bufferConfig, portSpeedCableLength):
         '''
         Initialize parameters all tests will use
@@ -49,6 +55,12 @@ class QosParamCisco(object):
         # Find SMS size
         self.is_large_sms = duthost.facts['platform'] not in self.SMALL_SMS_PLATFORMS
         self.is_deep_buffer = duthost.facts['platform'] in self.DEEP_BUFFER_PLATFORMS
+        # Detect a large pool for specific DRAM-enabled test scenarios
+        self.is_dram = False
+        if "egress_lossless_pool" in self.bufferConfig["BUFFER_POOL"]:
+            self.is_dram = (int(self.bufferConfig["BUFFER_POOL"]["egress_lossless_pool"]["size"]) >=
+                            self.IS_DRAM_POOL_SIZE_THRESHOLD_BYTES)
+        self.log("Is dram: {}".format(self.is_dram))
         # If t2 chassis
         self.is_t2 = duthost.facts["modular_chassis"] == "True"
         # Lossless profile attributes
@@ -66,7 +78,7 @@ class QosParamCisco(object):
         asic_params = {"gb": (6144000, 3072, 384, 1350, 2, 3),
                        "gr": (24576000, 18000, 384, 1350, 2, 3),
                        "gr2": (None, 2, 512, 64, 3, 4),
-                       "p200": (None, 1, 512, 64, 2, 2)}
+                       "p200": (None, 1, 512, 900, 2, 2)}
         self.supports_autogen = dutAsic in asic_params and topo == "topo-any"
         if self.supports_autogen:
             # Asic dependent parameters
@@ -550,6 +562,22 @@ class QosParamCisco(object):
                 lossless_params["extra_cap_margin"] = 25
             if self.dutAsic == "gb":
                 lossless_params["pkts_num_margin"] = 6
+            if self.dutAsic == "p200" and self.is_dram:
+                # DRAM lossless usage reports as a separate pool watermark attached to
+                # the egress lossless pool. Only use the lossless parametrization to test
+                # the SMS-only portion of the watermark before DRAM eviction.
+                if self.lossless_drop_thr > self.DRAM_SINGLE_QUEUE_EVICT_P200_BYTES:
+                    evict_pkts = (self.DRAM_SINGLE_QUEUE_EVICT_P200_BYTES
+                                  // self.buffer_size // packet_buffs)
+                    lossless_params["pkts_num_trig_pfc"] = evict_pkts
+                    self.log(
+                        "Lossless drop threshold ({} bytes) exceeds the DRAM eviction threshold "
+                        "({} bytes). Clamping pkts_num_trig_pfc to {} packets so only the SMS "
+                        "portion of the buffer pool watermark is tested before the queue evicts "
+                        "to DRAM.".format(
+                            self.lossless_drop_thr,
+                            self.DRAM_SINGLE_QUEUE_EVICT_P200_BYTES,
+                            evict_pkts))
             self.write_params("wm_buf_pool_lossless", lossless_params)
         if self.should_autogen(["wm_buf_pool_lossy"]):
             lossy_params = {"dscp": self.dscp_queue0,
