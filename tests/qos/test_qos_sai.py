@@ -48,6 +48,7 @@ from tests.common.helpers.ptf_tests_helper import (downstream_links, upstream_li
 from tests.common.utilities import get_ipv4_loopback_ip
 from tests.common.helpers.base_helper import read_logs
 from tests.common.mellanox_data import is_mellanox_device
+from tests.common.cisco_data import get_hbm_parameters, hbm_pkts_per_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -1243,6 +1244,72 @@ class TestQosSai(QosSaiBase):
 
         self.runPtfTest(
             ptfhost, testCase="sai_qos_tests.BufferPoolWatermarkTest",
+            testParams=testParams
+        )
+
+    def testQosSaiHbmBufferPoolWatermark(
+        self, get_src_dst_asic_and_duts, ptfhost, dutTestParams, dutConfig, dutQosConfig,
+        egressLosslessProfile, resetWatermark,
+        skip_src_dst_different_asic, permit_only_test_traffic_on_fanout
+    ):
+        """
+            Test QoS SAI HBM (egress lossless) buffer pool watermark.
+
+            On platforms where a lossless queue evicts from SMS to HBM, the HBM pool
+            watermark stays at zero while the queue is in SMS, jumps once the queue
+            evicts and is repacked into HBM buffers, tracks occupancy up to the
+            lossless drop threshold, then caps.
+
+            Args:
+                ptfhost (AnsibleHost): Packet Test Framework (PTF)
+                dutTestParams (Fixture, dict): DUT host test params
+                dutConfig (Fixture, dict): Map of DUT config
+                dutQosConfig (Fixture, dict): Map containing DUT host QoS configuration
+                egressLosslessProfile (Fixture): Egress lossless (HBM) buffer profile attributes
+                resetWatermark (Fixture): reset watermarks
+
+            Returns:
+                None
+
+            Raises:
+                RunAnsibleModuleFail if ptf test fails
+        """
+        portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
+        qosConfig = dutQosConfig["param"][portSpeedCableLength]
+        if "wm_buf_pool_hbm" not in qosConfig:
+            pytest.skip("HBM buffer pool watermark parametrization is not enabled on this platform")
+
+        src_dut = get_src_dst_asic_and_duts['src_dut']
+        asic_index = None
+        if src_dut.sonichost.is_multi_asic:
+            asic_index = get_src_dst_asic_and_duts['src_asic_index']
+        hbm_params = get_hbm_parameters(src_dut, asic_index=asic_index)
+        packet_size = int(qosConfig["wm_buf_pool_hbm"]["packet_size"])
+        pkts_per_buffer = hbm_pkts_per_buffer(packet_size, hbm_params)
+
+        testParams = dict()
+        testParams.update(dutTestParams["basicParams"])
+        testParams.update(qosConfig["wm_buf_pool_hbm"])
+        testParams.update({
+            "pkts_num_margin": qosConfig["wm_buf_pool_hbm"].get("pkts_num_margin", 8),
+            "dst_port_id": dutConfig["testPorts"]["dst_port_id"],
+            "dst_port_ip": dutConfig["testPorts"]["dst_port_ip"],
+            "src_port_id": dutConfig["testPorts"]["src_port_id"],
+            "src_port_ip": dutConfig["testPorts"]["src_port_ip"],
+            "pkts_num_leak_out": qosConfig["pkts_num_leak_out"],
+            "buf_pool_roid": egressLosslessProfile["bufferPoolRoid"],
+            "hbm_buffer_size_bytes": hbm_params["hbm_buffer_size_bytes"],
+            "hbm_pkts_per_buffer": pkts_per_buffer,
+            "dut_asic": dutConfig["dutAsic"]
+        })
+
+        if "platform_asic" in dutTestParams["basicParams"]:
+            testParams["platform_asic"] = dutTestParams["basicParams"]["platform_asic"]
+        else:
+            testParams["platform_asic"] = None
+
+        self.runPtfTest(
+            ptfhost, testCase="sai_qos_tests.HbmBufferPoolWatermarkTest",
             testParams=testParams
         )
 

@@ -6822,6 +6822,121 @@ class BufferPoolWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
             self.sai_thrift_port_tx_enable(self.dst_client, asic_type, [dst_port_id])
 
 
+class HbmBufferPoolWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
+    """
+    Validate the HBM (egress lossless) buffer pool watermark on platforms where a
+    lossless queue evicts from SMS to HBM. The pool watermark stays at zero while
+    the queue is in SMS, jumps once the queue evicts and is repacked into HBM
+    buffers, tracks occupancy up to the lossless drop threshold, then caps.
+    """
+
+    def runTest(self):
+        time.sleep(5)
+        switch_init(self.clients)
+
+        # Parse input parameters
+        dscp = int(self.test_params['dscp'])
+        ecn = int(self.test_params['ecn'])
+        router_mac = self.test_params['router_mac']
+        queue = self.test_params['queue']
+        dst_port_id = int(self.test_params['dst_port_id'])
+        dst_port_ip = self.test_params['dst_port_ip']
+        dst_port_mac = self.dataplane.get_mac(0, dst_port_id)
+        src_port_id = int(self.test_params['src_port_id'])
+        src_port_ip = self.test_params['src_port_ip']
+
+        asic_type = self.test_params['sonic_asic_type']
+        pkts_num_leak_out = int(self.test_params['pkts_num_leak_out'])
+        pkts_num_hbm_evict = int(self.test_params['pkts_num_hbm_evict'])
+        pkts_num_trig_pfc = int(self.test_params['pkts_num_trig_pfc'])
+        cell_size = int(self.test_params['cell_size'])
+        packet_length = int(self.test_params['packet_size'])
+        pkts_num_margin = int(self.test_params.get('pkts_num_margin', 8))
+
+        hbm_buffer_size = int(self.test_params['hbm_buffer_size_bytes'])
+        hbm_pkts_per_buffer = int(self.test_params['hbm_pkts_per_buffer'])
+
+        buf_pool_roid = int(self.test_params['buf_pool_roid'], 0)
+        print("HBM buf_pool_roid: 0x%lx" % (buf_pool_roid), file=sys.stderr)
+
+        cell_occupancy = (packet_length + cell_size - 1) // cell_size
+        ttl = 64
+
+        # Build a single test flow. On cisco-8000 the destination port may be
+        # adjusted for the fabric, so use the returned value.
+        pkt_s = get_multiple_flows(
+            self, router_mac if router_mac != '' else dst_port_mac,
+            dst_port_id, dst_port_ip, None, dscp, ecn, ttl, packet_length,
+            [(src_port_id, src_port_ip)], packets_per_port=1)[src_port_id][0]
+        pkt = pkt_s[0]
+        dst_port_id = pkt_s[2]
+
+        # The HBM pool watermark is read on the egress (dst) client.
+        client_to_use = self.dst_client
+
+        # Watermark is quantized to whole HBM buffers; allow a couple buffers of
+        # slop for packing boundaries and leakout/background-traffic noise.
+        tolerance_pkts = pkts_num_margin * cell_occupancy
+        tolerance_buffers = 2 + (tolerance_pkts + hbm_pkts_per_buffer - 1) // hbm_pkts_per_buffer
+        margin_bytes = tolerance_buffers * hbm_buffer_size
+
+        def expected_hbm_wm(queue_pkts):
+            num_buffers = (queue_pkts + hbm_pkts_per_buffer - 1) // hbm_pkts_per_buffer
+            return num_buffers * hbm_buffer_size
+
+        def fill_queue_and_read(queue_pkts):
+            # Clear the pool watermark, refill the queue to queue_pkts with tx
+            # disabled, then read the resulting peak occupancy.
+            sai_thrift_clear_buffer_pool_watermark(client_to_use, buf_pool_roid)
+            self.sai_thrift_port_tx_disable(self.dst_client, asic_type, [dst_port_id])
+            fill_leakout_plus_one(self, src_port_id, dst_port_id, pkt, queue, asic_type)
+            send_packet(self, src_port_id, pkt, pkts_num_leak_out + queue_pkts - 1)
+            self.sai_thrift_port_tx_enable(self.dst_client, asic_type, [dst_port_id])
+            time.sleep(8)
+            return sai_thrift_read_buffer_pool_watermark(client_to_use, buf_pool_roid)
+
+        try:
+            # Step 1-2: Fill below the eviction threshold. The queue is still in SMS,
+            # so the HBM pool watermark must be zero.
+            below_evict = max(pkts_num_hbm_evict - tolerance_pkts, 0)
+            wm = fill_queue_and_read(below_evict)
+            print("Below eviction: queued %d pkts, HBM wm %d (expect ~0)" %
+                  (below_evict, wm), file=sys.stderr)
+            assert wm <= margin_bytes, \
+                "HBM watermark {} should be ~0 below the eviction threshold".format(wm)
+
+            # Step 3-5: Cross the eviction threshold and ramp up to the drop threshold.
+            # Above eviction the whole queue is repacked into HBM, so the watermark
+            # tracks ceil(queue_pkts / pkts_per_buffer) HBM buffers and increases.
+            just_above = pkts_num_hbm_evict + tolerance_pkts
+            mid_ramp = (pkts_num_hbm_evict + pkts_num_trig_pfc) // 2
+            near_drop = max(pkts_num_trig_pfc - tolerance_pkts, just_above)
+            prev_wm = 0
+            for queue_pkts in [just_above, mid_ramp, near_drop]:
+                wm = fill_queue_and_read(queue_pkts)
+                expected = expected_hbm_wm(queue_pkts)
+                print("Above eviction: queued %d pkts, HBM wm %d, expected %d" %
+                      (queue_pkts, wm, expected), file=sys.stderr)
+                assert abs(wm - expected) <= margin_bytes, \
+                    "HBM watermark {} differs from expected {} by more than {}".format(
+                        wm, expected, margin_bytes)
+                assert wm >= prev_wm, \
+                    "HBM watermark {} did not increase with occupancy (prev {})".format(wm, prev_wm)
+                prev_wm = wm
+
+            # Step 6-7: Send past the drop threshold. Excess packets are dropped at
+            # ingress, so the HBM watermark must cap at the drop-threshold value.
+            capped = expected_hbm_wm(pkts_num_trig_pfc)
+            past_drop = pkts_num_trig_pfc + pkts_num_trig_pfc // 4
+            wm = fill_queue_and_read(past_drop)
+            print("Past drop: queued %d pkts, HBM wm %d, capped expected %d" %
+                  (past_drop, wm, capped), file=sys.stderr)
+            assert wm <= capped + margin_bytes, \
+                "HBM watermark {} exceeded the drop-threshold cap {}".format(wm, capped)
+        finally:
+            self.sai_thrift_port_tx_enable(self.dst_client, asic_type, [dst_port_id])
+
+
 class PacketTransmit(sai_base_test.ThriftInterfaceDataPlane):
     """
     Transmit packets from a given source port to destination port. If no
