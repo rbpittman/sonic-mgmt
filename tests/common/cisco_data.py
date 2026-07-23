@@ -142,6 +142,9 @@ def run_dshell_command(duthost, command):
 # The burst-size register is expressed in fixed-size units the CLI does not report.
 HBM_BURST_UNIT_BYTES = 512
 
+# SMS occupancy at which a single lossless queue evicts from SMS to HBM on Cisco P200.
+HBM_SINGLE_QUEUE_EVICT_P200_BYTES = 44 * 1024 * 1024
+
 _SIZE_UNIT_MULTIPLIERS = {
     "B": 1,
     "BYTE": 1,

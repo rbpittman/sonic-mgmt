@@ -1,5 +1,6 @@
 import logging
 import math
+from tests.common.cisco_data import HBM_SINGLE_QUEUE_EVICT_P200_BYTES
 from tests.qos.qos_sai_base import QosSaiBase
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,8 @@ class QosParamCisco(object):
 
     LOG_PREFIX = "QosParamCisco: "
 
-    # Pool size that is considered to be a DRAM pool.
-    IS_DRAM_POOL_SIZE_THRESHOLD_BYTES = 512 * 2 ** 20
-    # Occupancy at which a single queue evicts to DRAM.
-    # TODO: Consider updating how this is stored. e.g. as a device parameter below.
-    DRAM_SINGLE_QUEUE_EVICT_P200_BYTES = 44 * 2 ** 20
+    # Egress lossless pool size at or above which the pool is HBM-backed.
+    IS_HBM_POOL_SIZE_THRESHOLD_BYTES = 512 * 2 ** 20
 
     def __init__(self, qos_params, duthost, dutAsic, topo, bufferConfig, portSpeedCableLength):
         '''
@@ -55,12 +53,12 @@ class QosParamCisco(object):
         # Find SMS size
         self.is_large_sms = duthost.facts['platform'] not in self.SMALL_SMS_PLATFORMS
         self.is_deep_buffer = duthost.facts['platform'] in self.DEEP_BUFFER_PLATFORMS
-        # Detect a large pool for specific DRAM-enabled test scenarios
-        self.is_dram = False
+        # Detect an HBM-backed egress lossless pool for HBM-specific test scenarios
+        self.is_hbm = False
         if "egress_lossless_pool" in self.bufferConfig["BUFFER_POOL"]:
-            self.is_dram = (int(self.bufferConfig["BUFFER_POOL"]["egress_lossless_pool"]["size"]) >=
-                            self.IS_DRAM_POOL_SIZE_THRESHOLD_BYTES)
-        self.log("Is dram: {}".format(self.is_dram))
+            self.is_hbm = (int(self.bufferConfig["BUFFER_POOL"]["egress_lossless_pool"]["size"]) >=
+                           self.IS_HBM_POOL_SIZE_THRESHOLD_BYTES)
+        self.log("Is hbm: {}".format(self.is_hbm))
         # If t2 chassis
         self.is_t2 = duthost.facts["modular_chassis"] == "True"
         # Lossless profile attributes
@@ -562,21 +560,21 @@ class QosParamCisco(object):
                 lossless_params["extra_cap_margin"] = 25
             if self.dutAsic == "gb":
                 lossless_params["pkts_num_margin"] = 6
-            if self.dutAsic == "p200" and self.is_dram:
-                # DRAM lossless usage reports as a separate pool watermark attached to
+            if self.dutAsic == "p200" and self.is_hbm:
+                # HBM lossless usage reports as a separate pool watermark attached to
                 # the egress lossless pool. Only use the lossless parametrization to test
-                # the SMS-only portion of the watermark before DRAM eviction.
-                if self.lossless_drop_thr > self.DRAM_SINGLE_QUEUE_EVICT_P200_BYTES:
-                    evict_pkts = (self.DRAM_SINGLE_QUEUE_EVICT_P200_BYTES
+                # the SMS-only portion of the watermark before HBM eviction.
+                if self.lossless_drop_thr > HBM_SINGLE_QUEUE_EVICT_P200_BYTES:
+                    evict_pkts = (HBM_SINGLE_QUEUE_EVICT_P200_BYTES
                                   // self.buffer_size // packet_buffs)
                     lossless_params["pkts_num_trig_pfc"] = evict_pkts
                     self.log(
-                        "Lossless drop threshold ({} bytes) exceeds the DRAM eviction threshold "
+                        "Lossless drop threshold ({} bytes) exceeds the HBM eviction threshold "
                         "({} bytes). Clamping pkts_num_trig_pfc to {} packets so only the SMS "
                         "portion of the buffer pool watermark is tested before the queue evicts "
-                        "to DRAM.".format(
+                        "to HBM.".format(
                             self.lossless_drop_thr,
-                            self.DRAM_SINGLE_QUEUE_EVICT_P200_BYTES,
+                            HBM_SINGLE_QUEUE_EVICT_P200_BYTES,
                             evict_pkts))
             self.write_params("wm_buf_pool_lossless", lossless_params)
         if self.should_autogen(["wm_buf_pool_lossy"]):
@@ -594,6 +592,23 @@ class QosParamCisco(object):
             if self.dutAsic == "gb":
                 lossy_params["pkts_num_margin"] = 6
             self.write_params("wm_buf_pool_lossy", lossy_params)
+        if self.dutAsic == "p200" and self.is_hbm and self.should_autogen(["wm_buf_pool_hbm"]):
+            # On an HBM-backed lossless pool, a single queue stays in SMS until it hits
+            # the eviction threshold, then the whole queue moves to the HBM (egress
+            # lossless) pool and is repacked. This parametrization walks the HBM pool
+            # watermark from zero (pre-eviction) up to the lossless drop threshold.
+            hbm_evict_pkts = HBM_SINGLE_QUEUE_EVICT_P200_BYTES // self.buffer_size // packet_buffs
+            drop_pkts = self.lossless_drop_thr // self.buffer_size // packet_buffs
+            hbm_params = {"dscp": 3,
+                          "ecn": 1,
+                          "pg": 3,
+                          "queue": 3,
+                          "pkts_num_fill_ingr_min": 0,
+                          "pkts_num_hbm_evict": hbm_evict_pkts,
+                          "pkts_num_trig_pfc": drop_pkts,
+                          "cell_size": self.buffer_size,
+                          "packet_size": packet_size}
+            self.write_params("wm_buf_pool_hbm", hbm_params)
 
     def __define_q_shared_watermark(self):
         if self.should_autogen(["wm_q_shared_lossless"]):
