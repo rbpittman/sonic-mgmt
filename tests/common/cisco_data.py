@@ -125,3 +125,130 @@ def run_dshell_command(duthost, command):
     if not wait_until(300, 20, 0, check_dshell_ready, duthost):
         raise RuntimeError("Debug shell is not ready on {}".format(duthost.hostname))
     return duthost.shell(command)
+
+
+# =============================================================================
+# HBM buffer packing parameters
+# =============================================================================
+# Read the HBM packing parameters from "show platform npu global" and compute
+# the expected HBM buffer pool watermark for a given packet load. Retrieval
+# (needs a duthost) is kept separate from the pure formula helpers so the math
+# can be reused/unit-tested without a live device.
+#
+# Packing model: each packet costs (packet_size + header_size) bytes and packs
+# into an effective region of (hbm_burst_size * HBM_BURST_UNIT_BYTES) bytes,
+# capped at max_pds_in_pack packets, then flushes to one hbm_buffer_size buffer.
+
+# The burst-size register is expressed in fixed-size units the CLI does not report.
+HBM_BURST_UNIT_BYTES = 512
+
+_SIZE_UNIT_MULTIPLIERS = {
+    "B": 1,
+    "BYTE": 1,
+    "BYTES": 1,
+    "KB": 1024,
+    "MB": 1024 ** 2,
+    "GB": 1024 ** 3,
+}
+
+# Fields at the top of "show platform npu global"; whitespace before the colon
+# is inconsistent, so \s* is used liberally. The command labels these fields
+# "DRAM ...", so the match strings keep that wording.
+_HBM_SIZE_FIELD_PATTERNS = {
+    # Reported with a size unit (e.g. "8 KB").
+    "hbm_buffer_size_bytes": r"DRAM buffer size\s*:\s*(\d+)\s*([A-Za-z]+)?",
+    "sms_memory_size_bytes": r"SMS Memory Size\s*:\s*(\d+)\s*([A-Za-z]+)?",
+}
+_HBM_COUNT_FIELD_PATTERNS = {
+    # Unitless integer fields.
+    "hbm_burst_size": r"DRAM burst size\s*:\s*(\d+)",
+    "max_pds_in_pack": r"DRAM max packet descriptors in a pack\s*:\s*(\d+)",
+    "header_size_bytes": r"DRAM header size per packet descriptor\s*:\s*(\d+)",
+}
+# Fields required to compute the HBM watermark.
+_REQUIRED_HBM_FIELDS = (
+    "hbm_buffer_size_bytes",
+    "hbm_burst_size",
+    "max_pds_in_pack",
+    "header_size_bytes",
+)
+
+
+def _size_to_bytes(number, unit):
+    """Convert a "<number> <unit>" size (e.g. 8, "KB") to an integer byte count."""
+    number = int(number)
+    if not unit:
+        return number
+    multiplier = _SIZE_UNIT_MULTIPLIERS.get(unit.upper())
+    if multiplier is None:
+        raise ValueError(
+            "Unrecognized size unit '{}' in 'show platform npu global' output".format(unit))
+    return number * multiplier
+
+
+def parse_hbm_parameters(output):
+    """
+    Parse HBM/SMS parameters from "show platform npu global" output.
+
+    Raises ValueError if a required field is missing, so a CLI format change fails
+    loudly instead of silently producing wrong watermark expectations.
+    """
+    params = {}
+    for key, pattern in _HBM_SIZE_FIELD_PATTERNS.items():
+        match = re.search(pattern, output)
+        if match:
+            params[key] = _size_to_bytes(match.group(1), match.group(2))
+    for key, pattern in _HBM_COUNT_FIELD_PATTERNS.items():
+        match = re.search(pattern, output)
+        if match:
+            params[key] = int(match.group(1))
+
+    missing = [key for key in _REQUIRED_HBM_FIELDS if key not in params]
+    if missing:
+        raise ValueError(
+            "Could not parse HBM parameters {} from 'show platform npu global'. "
+            "Raw output:\n{}".format(missing, output))
+    return params
+
+
+def get_hbm_parameters(duthost, asic_index=None):
+    """
+    Retrieve live HBM packing parameters from a Cisco 8000 DUT.
+
+    asic_index adds a "-n asic<index>" namespace option for multi-asic platforms.
+    """
+    namespace_option = ""
+    if asic_index is not None:
+        namespace_option = " -n asic{}".format(asic_index)
+    show_command = "show platform npu global{}".format(namespace_option)
+    result = run_dshell_command(duthost, show_command)
+    return parse_hbm_parameters(result["stdout"])
+
+
+def hbm_pkts_per_buffer(packet_size, hbm_params, burst_unit_bytes=HBM_BURST_UNIT_BYTES):
+    """Packets that pack into a single HBM buffer for the given packet size."""
+    effective_pack_bytes = hbm_params["hbm_burst_size"] * burst_unit_bytes
+    per_pkt_bytes = packet_size + hbm_params["header_size_bytes"]
+    return min(hbm_params["max_pds_in_pack"], effective_pack_bytes // per_pkt_bytes)
+
+
+def hbm_bytes_per_packet(packet_size, hbm_params, burst_unit_bytes=HBM_BURST_UNIT_BYTES):
+    """Effective HBM occupancy (bytes) per packet once evicted to HBM."""
+    pkts_per_buffer = hbm_pkts_per_buffer(packet_size, hbm_params, burst_unit_bytes)
+    if pkts_per_buffer <= 0:
+        raise ValueError("Packet size {} does not fit the HBM pack path".format(packet_size))
+    return hbm_params["hbm_buffer_size_bytes"] / pkts_per_buffer
+
+
+def expected_hbm_watermark_bytes(num_packets, packet_size, hbm_params,
+                                 burst_unit_bytes=HBM_BURST_UNIT_BYTES):
+    """
+    Expected HBM buffer pool watermark after num_packets have evicted to HBM.
+
+    Rounds up to whole buffers, since a partially-filled pack still consumes one.
+    """
+    pkts_per_buffer = hbm_pkts_per_buffer(packet_size, hbm_params, burst_unit_bytes)
+    if pkts_per_buffer <= 0:
+        raise ValueError("Packet size {} does not fit the HBM pack path".format(packet_size))
+    num_buffers = (num_packets + pkts_per_buffer - 1) // pkts_per_buffer
+    return num_buffers * hbm_params["hbm_buffer_size_bytes"]
