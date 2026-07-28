@@ -2,10 +2,15 @@
 Unit tests for probe bug fixes:
   1. HeadroomPoolProbe: updateTestPortIdIp positional-arg fix (qosParams keyword)
   2. EgressDropProbe: lossy_queue fallback to dutQosConfig["param"] level
+  3. UpperBound runaway guard: every probe must pass the pool_size= safety cap
 
 These tests validate the fix logic in isolation without importing the full
 TestQosProbe class (which requires heavy fixtures from QosSaiBase).
 """
+import ast
+import glob
+import os
+
 import pytest
 
 
@@ -217,3 +222,116 @@ class TestLossyQueueEdgeCases:
         if "lossy_queue_1" not in breakout_config:
             fallback = config["param"]
             assert "lossy_queue_1" in fallback
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: UpperBound runaway guard - every probe must pass the pool_size= cap
+# ---------------------------------------------------------------------------
+# Bug (2026-07): pfc_xon_probing.py and egress_drop_probing.py invoked the
+# exponential UpperBoundProbingAlgorithm.run() WITHOUT the pool_size= safety
+# cap. Without that kwarg the cap ("abort if current > 3x pool_size") is
+# disabled, so if the threshold is never detected the fill count doubles up to
+# max_iterations=20 (pool_size * 2^k), sending an astronomically large number
+# of single packets that never completes on large-buffer platforms (Cisco 8000
+# pfcxoff_point is up to ~762k packets).
+#
+# The algorithm INTENTIONALLY keeps pool_size optional -- the mock unit tests
+# (test_upper_bound_probing_algorithm.py) exercise the uncapped exponential /
+# max-iteration paths on purpose. Enforcement therefore lives at the CALLER
+# layer: every production probe that drives UpperBoundProbingAlgorithm.run()
+# MUST pass pool_size=. This static AST guard fails if any probe drops the
+# kwarg again (or a newly-added probe forgets it).
+#
+# Keep in sync with: tests/saitests/probe/*_probing.py upper-bound call sites.
+
+def _probe_dir():
+    """Absolute path to tests/saitests/probe (this file lives in .../mock/ut)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.abspath(os.path.join(here, "..", "..", "probe"))
+
+
+def _slice_const_str(slice_node):
+    """Return the string key of a subscript slice across Python versions.
+
+    py3.9+ stores the expression directly in Subscript.slice; older versions
+    wrap it in ast.Index. Returns None if the slice is not a string constant.
+    """
+    index_cls = getattr(ast, "Index", None)
+    if index_cls is not None and isinstance(slice_node, index_cls):
+        slice_node = slice_node.value
+    if isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
+        return slice_node.value
+    return None
+
+
+def _iter_upper_bound_run_calls(tree):
+    """Yield ast.Call nodes that invoke `.run(...)` on an UpperBound algorithm.
+
+    Recognizes the two call shapes used across the probes:
+      A) UpperBoundProbingAlgorithm(...).run(...)     # inline chain (pfc_xon)
+      B) <collection>["upper..."].run(...)            # dict-held instance
+         e.g. algorithms["upper_bound"], pfc_algos['upper'], drop_algos['upper']
+    """
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "run"):
+            continue
+        recv = node.func.value
+
+        # Case A: chained directly on a fresh UpperBoundProbingAlgorithm(...)
+        if isinstance(recv, ast.Call):
+            f = recv.func
+            name = getattr(f, "id", None) or getattr(f, "attr", None)
+            if name == "UpperBoundProbingAlgorithm":
+                yield node
+            continue
+
+        # Case B: subscript into a collection using an 'upper' key
+        if isinstance(recv, ast.Subscript):
+            key = _slice_const_str(recv.slice)
+            if key is not None and "upper" in key.lower():
+                yield node
+
+
+class TestUpperBoundPoolSizeCapGuard:
+    """Every production probe must pass pool_size= to UpperBound.run() so the
+    exponential search can never grow unbounded (2026-07 runaway regression)."""
+
+    def _upper_bound_calls(self):
+        """Collect (filename, ast.Call) for every UpperBound.run() call site."""
+        calls = []
+        for path in sorted(glob.glob(os.path.join(_probe_dir(), "*_probing.py"))):
+            with open(path) as fh:
+                tree = ast.parse(fh.read(), filename=path)
+            for node in _iter_upper_bound_run_calls(tree):
+                calls.append((os.path.basename(path), node))
+        return calls
+
+    def test_scanner_finds_upper_bound_calls(self):
+        """Sanity: the AST scanner actually locates the known call sites.
+
+        There are currently 6 upper-bound run sites (pfc_xoff, pfc_xon,
+        ingress_drop, egress_drop, and headroom_pool x2). Guard against the
+        scanner silently matching nothing after a call-shape refactor.
+        """
+        calls = self._upper_bound_calls()
+        assert len(calls) >= 5, (
+            f"Expected to locate the UpperBound.run() call sites across the "
+            f"probes but found {len(calls)}. Did the call shape change? "
+            f"Update _iter_upper_bound_run_calls()."
+        )
+
+    def test_every_upper_bound_run_passes_pool_size(self):
+        """Regression guard: no probe may invoke UpperBound.run() without the
+        pool_size= safety cap (the 2026-07 unbounded-fill runaway)."""
+        offenders = []
+        for fname, node in self._upper_bound_calls():
+            has_cap = any(kw.arg == "pool_size" for kw in node.keywords)
+            if not has_cap:
+                offenders.append(f"{fname}:{node.lineno}")
+        assert not offenders, (
+            "UpperBoundProbingAlgorithm.run() called WITHOUT the pool_size= "
+            "safety cap (unbounded exponential fill - see 2026-07 runaway "
+            "bug). Add pool_size=pool_size to:\n  " + "\n  ".join(offenders)
+        )

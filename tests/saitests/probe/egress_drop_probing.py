@@ -352,7 +352,14 @@ class EgressDropProbing(ProbingBase):
     def _run_algorithms(self, algorithms, src_port, dst_port, pool_size, **traffic_keys):
         """Execute 4-phase probing algorithm sequence."""
         # Phase 1: Upper bound discovery
-        upper_bound, _ = algorithms["upper_bound"].run(src_port, dst_port, pool_size, **traffic_keys)
+        # Pass pool_size= as the runaway safety cap (mirrors peer probes
+        # pfc_xoff_probing.py / ingress_drop_probing.py). Without it the
+        # exponential growth has no ceiling: if the threshold is never detected,
+        # the algorithm keeps doubling the packet count (pool_size*2^k) up to
+        # max_iterations=20, sending astronomically many single packets and
+        # never terminating in practice. The cap aborts once current > 3x pool_size.
+        upper_bound, _ = algorithms["upper_bound"].run(
+            src_port, dst_port, pool_size, pool_size=pool_size, **traffic_keys)
         if upper_bound is None:
             ProbingObserver.console("[ERROR] Upper bound detection failed")
             return (None, None)

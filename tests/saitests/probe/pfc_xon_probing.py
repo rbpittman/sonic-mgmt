@@ -452,10 +452,16 @@ class PfcXonProbing(ProbingBase):
         point_exec = self.create_executor(XOFF_TARGET, point_obs, "step2_point")
 
         # Phase 1: Upper bound discovery (exponential)
+        # Pass pool_size= as the runaway safety cap (mirrors peer probe
+        # pfc_xoff_probing.py::_run_algorithms). Without it the exponential
+        # growth has no ceiling: if xoff is never detected, the algorithm keeps
+        # doubling the packet count (pool_size*2^k) up to max_iterations=20,
+        # sending astronomically many single packets and never terminating in
+        # practice. The cap aborts once current > 3x pool_size.
         upper_bound, _ = UpperBoundProbingAlgorithm(
             executor=upper_exec, observer=upper_obs,
             verification_attempts=1,
-        ).run(src_port, dst_port, pool_size, **traffic_keys)
+        ).run(src_port, dst_port, pool_size, pool_size=pool_size, **traffic_keys)
         if upper_bound is None:
             ProbingObserver.console(
                 "[Step 1+2] Upper bound discovery failed; falling back to yaml hint"
