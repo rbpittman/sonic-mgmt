@@ -40,6 +40,7 @@ from executor_registry import ExecutorRegistry
 try:
     from switch import (
         sai_thrift_read_port_counters,
+        sai_thrift_read_queue_occupancy,
         port_list
     )
     # Import constants from sai_qos_tests.py
@@ -62,6 +63,9 @@ except ImportError:
 
     def sai_thrift_read_port_counters(client, asic_type, port):
         return [0] * 20, [0] * 10
+
+    def sai_thrift_read_queue_occupancy(client, target, port_id):
+        return [0] * 8
 
     port_list = {"dst": {}}
 
@@ -138,6 +142,41 @@ class EgressDropProbingExecutor:
         if self.verbose and self.observer:
             self.observer.trace(f"[Egress Drop Executor] Prepare: src={src_port}, dst={dst_port}")
 
+    def _fill_leakout(self, src_port, dst_port, **traffic_keys):
+        """
+        Fill leakout for cisco-8000 platforms.
+
+        On cisco-8000, after TX disable, some initial packets still leak out
+        through the egress pipeline. This method sends packets one at a time
+        until queue occupancy rises, confirming the buffer is actually holding.
+
+        Only activates for cisco-8000; returns 0 immediately for other platforms.
+
+        Returns:
+            int: Number of packets sent to fill leakout (0 for non-cisco platforms)
+        """
+        if 'cisco-8000' not in self.ptftest.asic_type:
+            return 0
+
+        queue = traffic_keys.get('queue', traffic_keys.get('pg', 0))
+        queue_counters_base = sai_thrift_read_queue_occupancy(
+            self.ptftest.dst_client, "dst", dst_port)
+        max_packets = 2000
+        for packet_i in range(max_packets):
+            self.ptftest.buffer_ctrl.send_traffic(src_port, dst_port, 1, **traffic_keys)
+            queue_counters = sai_thrift_read_queue_occupancy(
+                self.ptftest.dst_client, "dst", dst_port)
+            if queue_counters[queue] > queue_counters_base[queue]:
+                if self.verbose and self.observer:
+                    self.observer.trace(
+                        f"[Egress Drop Executor] fill_leakout: sent {packet_i + 1} packets, "
+                        f"queue {queue} occupancy rose from "
+                        f"{queue_counters_base[queue]} to {queue_counters[queue]}")
+                return packet_i + 1
+        raise RuntimeError(
+            f"fill_leakout failed: sent {max_packets} packets but queue {queue} occupancy "
+            f"did not increase on dst_port={dst_port}")
+
     def check(self, src_port: int, dst_port: int, value: int, attempts: int = 1,
               drain_buffer: bool = True, iteration: int = 0, **traffic_keys) -> Tuple[bool, bool]:
         """
@@ -176,6 +215,7 @@ class EgressDropProbingExecutor:
                     time.sleep(PORT_TX_CTRL_DELAY)
                     self.ptftest.buffer_ctrl.hold_buffer([dst_port])
                     time.sleep(PORT_TX_CTRL_DELAY)
+                    self._fill_leakout(src_port, dst_port, **traffic_keys)
 
                 # ===== Step 2: Baseline measurement on dst port =====
                 dport_cnt_base, _ = _sai_thrift_read_port_counters(
