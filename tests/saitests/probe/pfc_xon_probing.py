@@ -384,14 +384,34 @@ class PfcXonProbing(ProbingBase):
         physical regression on each. Tracked in
         cortex/sessions/mmu-probe-status-0507/STATUS.md follow-ups.
         """
-        pool_size = self.get_pool_size()
+        # Convert pool size from cells to packets (mirrors pfc_xoff_probing.py).
+        # get_pool_size() returns raw cells; the probing algorithms operate in
+        # packet units, so we must divide by probe_cells_per_packet. Passing the
+        # raw cell count (as this method previously did) doubled the already-huge
+        # fill on 512-byte-cell SKUs and was a primary cause of multi-hour runs.
+        pool_size_cells = self.get_pool_size()
+        pool_size = pool_size_cells // self.probe_cells_per_packet
+
+        # Seed the upper-bound search near the known trigger point instead of at
+        # pool size. pfcxoff_point (yaml pkts_num_trig_pfc hint) closely
+        # estimates the real xoff threshold, so 2x it almost always fires xoff on
+        # the first iteration. Seeding at pool_size would make the first fill
+        # send ~pool_size packets one at a time (~8000 pps on Cisco 8000 => tens
+        # of minutes per fill) — the dominant cost of this chain and the cause of
+        # the multi-hour runs. Exponential growth still doubles up to the
+        # pool_size safety cap if the hint turns out too low, so a low seed is
+        # safe and does not change the measured xoff_point.
+        upper_seed = min(pool_size, max(1, 2 * int(self.pfcxoff_point)))
 
         ProbingObserver.console("=" * 80)
         ProbingObserver.console(
             f"[{self.PROBE_TARGET}] Step 1+2 — PfcXoff chain probe (design v3)"
         )
         ProbingObserver.console(
-            f"  src_port={src_port}  dst_port={dst_port}  pool_size={pool_size}"
+            f"  src_port={src_port}  dst_port={dst_port}  "
+            f"pool_size_cells={pool_size_cells} "
+            f"cells_per_packet={self.probe_cells_per_packet} "
+            f"pool_size_pkts={pool_size}  upper_seed={upper_seed}"
         )
         ProbingObserver.console(
             f"  yaml pfcxoff_point hint = {self.pfcxoff_point} "
@@ -452,16 +472,17 @@ class PfcXonProbing(ProbingBase):
         point_exec = self.create_executor(XOFF_TARGET, point_obs, "step2_point")
 
         # Phase 1: Upper bound discovery (exponential)
-        # Pass pool_size= as the runaway safety cap (mirrors peer probe
-        # pfc_xoff_probing.py::_run_algorithms). Without it the exponential
-        # growth has no ceiling: if xoff is never detected, the algorithm keeps
-        # doubling the packet count (pool_size*2^k) up to max_iterations=20,
-        # sending astronomically many single packets and never terminating in
-        # practice. The cap aborts once current > 3x pool_size.
+        # Seed at upper_seed (~2x the yaml xoff hint), NOT pool_size, so the
+        # first fill is a few thousand packets instead of ~pool_size (which at
+        # ~8000 pps on Cisco 8000 is tens of minutes per fill). pool_size= is
+        # still passed as the runaway safety cap (mirrors peer probe
+        # pfc_xoff_probing.py::_run_algorithms): if xoff is never detected the
+        # exponential growth doubles up to 3x pool_size then aborts, instead of
+        # doubling for the full max_iterations=20.
         upper_bound, _ = UpperBoundProbingAlgorithm(
             executor=upper_exec, observer=upper_obs,
             verification_attempts=1,
-        ).run(src_port, dst_port, pool_size, pool_size=pool_size, **traffic_keys)
+        ).run(src_port, dst_port, upper_seed, pool_size=pool_size, **traffic_keys)
         if upper_bound is None:
             ProbingObserver.console(
                 "[Step 1+2] Upper bound discovery failed; falling back to yaml hint"

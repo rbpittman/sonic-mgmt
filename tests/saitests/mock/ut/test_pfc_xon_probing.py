@@ -51,6 +51,10 @@ class _PfcXonProbingFixture(PfcXonProbing):
         self.stream_mgr = Mock()
         self.cnt_pg_idx = None
         self.pfcxoff_point = 0
+        # Buffer pool cell->packet conversion factor (mirrors the pfc_xoff test
+        # fixture). _run_pfcxoff_chain now divides get_pool_size() cells by this
+        # to obtain packet units, so the fixture must provide it.
+        self.probe_cells_per_packet = 1
         self.enable_xon_range_probe = False
         # Step 1+2 chain default = True per design v3 (added 2026-05-09); UT
         # fixtures default to False so existing dispatch / parsing tests don't
