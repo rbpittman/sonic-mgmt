@@ -4536,7 +4536,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiLosslessVoq:
     conditions_logical_operator: or
     conditions:
       # OQ ASICs (GR2/GR2X/P200) lack VOQs - skip VOQ-specific tests
-      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith('x86_64-8223_')"
+      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith(constants['CISCO_8223_PREFIX'])"
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in constants['QOS_SAI_TOPO'] and asic_type not in ['mellanox']"
 
@@ -4546,7 +4546,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiLossyQueueVoq:
     conditions_logical_operator: or
     conditions:
       # OQ ASICs (GR2/GR2X/P200) lack VOQs - skip VOQ-specific tests
-      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith('x86_64-8223_')"
+      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith(constants['CISCO_8223_PREFIX'])"
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in constants['QOS_SAI_TOPO'] and asic_type not in ['mellanox']"
 
@@ -4556,7 +4556,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiLossyQueueVoqMultiSrc:
     conditions_logical_operator: or
     conditions:
       # OQ ASICs (GR2/GR2X/P200) lack VOQs - skip VOQ-specific tests
-      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith('x86_64-8223_')"
+      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith(constants['CISCO_8223_PREFIX'])"
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in constants['QOS_SAI_TOPO'] and asic_type not in ['mellanox']"
 
@@ -4565,7 +4565,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiPGDrop:
     reason: "Unsupported testbed type."
     conditions_logical_operator: or
     conditions:
-      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX'])"
+      - "asic_type not in ['cisco-8000'] or platform.startswith(constants['CISCO_8122_PREFIX']) or platform.startswith(constants['CISCO_8223_PREFIX'])"
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in constants['QOS_SAI_TOPO'] and asic_type not in ['mellanox']"
 

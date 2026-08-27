@@ -13,6 +13,7 @@ CISCO_ASIC_TYPE = "cisco-8000"
 CISCO_8122_PREFIX = "x86_64-8122"        # Matches both GR2 (x86_64-8122_*) and GR2X (x86_64-8122x*)
 CISCO_8122_GR2_PREFIX = "x86_64-8122_"   # GR2 only (note trailing underscore)
 CISCO_8122_GR2X_PREFIX = "x86_64-8122x"  # GR2X only (note 'x' suffix)
+CISCO_8223_PREFIX = "x86_64-8223_"       # Matches 8223 platforms (x86_64-8223_*)
 
 # Legacy aliases (kept for backward compatibility)
 GR2X_PLATFORM_PREFIX = CISCO_8122_GR2X_PREFIX

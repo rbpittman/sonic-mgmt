@@ -20,6 +20,7 @@ from tests.common.cisco_data import (
     CISCO_8122_PREFIX,
     CISCO_8122_GR2_PREFIX,
     CISCO_8122_GR2X_PREFIX,
+    CISCO_8223_PREFIX,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ MARK_CONDITIONS_CONSTANTS = {
     "CISCO_8122_PREFIX": CISCO_8122_PREFIX,
     "CISCO_8122_GR2_PREFIX": CISCO_8122_GR2_PREFIX,
     "CISCO_8122_GR2X_PREFIX": CISCO_8122_GR2X_PREFIX,
+    "CISCO_8223_PREFIX": CISCO_8223_PREFIX,
     "QOS_SAI_TOPO": ['t0', 't0-64', 't0-116', 't0-118', 't0-35', 't0-56', 't0-80',
                      't0-standalone-32', 't0-standalone-64', 't0-standalone-128', 't0-standalone-256',
                      'dualtor-56', 'dualtor-120', 'dualtor', 'dualtor-aa', 'dualtor-aa-56', 'dualtor-aa-64-breakout',
