@@ -6686,6 +6686,7 @@ class QSharedWatermarkQuantizedTest(sai_base_test.ThriftInterfaceDataPlane):
         descriptor_size = int(self.test_params.get('descriptor_size', 0))
         fill_margin = int(self.test_params.get('fill_margin', 10))
         thresholds = [int(value) for value in self.test_params['quant_thresholds']]
+        print("quant_thresholds: %s" % (thresholds), file=sys.stderr)
 
         if 'packet_size' in list(self.test_params.keys()):
             packet_length = int(self.test_params['packet_size'])
@@ -6737,6 +6738,23 @@ class QSharedWatermarkQuantizedTest(sai_base_test.ThriftInterfaceDataPlane):
 
         def thr_to_pkts(threshold_bytes):
             return threshold_bytes // bytes_per_pkt
+
+        # A threshold can only be probed if filling to threshold + fill_margin stays below
+        # the drop threshold. Keep one extra threshold past the last probeable one, since
+        # it is the value the watermark is expected to jump to.
+        drop_pkts = int(self.test_params['pkts_num_trig_drp'])
+        last_fillable = -1
+        for i, threshold in enumerate(thresholds):
+            if thr_to_pkts(threshold) + fill_margin < drop_pkts:
+                last_fillable = i
+        assert last_fillable >= 1, \
+            ("No quantized threshold of {} can be filled below the drop threshold of {} pkts "
+             "(fill_margin {} pkts, bytes_per_pkt {})").format(
+                thresholds, drop_pkts, fill_margin, bytes_per_pkt)
+        if last_fillable + 2 < len(thresholds):
+            print("Limiting quantized thresholds %s to %s due to drop threshold of %d pkts" % (
+                thresholds, thresholds[:last_fillable + 2], drop_pkts), file=sys.stderr)
+        thresholds = thresholds[:last_fillable + 2]
 
         # Confirm that each threshold is separated by at least the fill_margin, otherwise threshold checks will break.
         for i in range(len(thresholds) - 1):
