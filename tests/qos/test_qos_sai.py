@@ -2240,6 +2240,11 @@ class TestQosSai(QosSaiBase):
         if queueProfile not in list(qosConfig.keys()):
             pytest.skip("Queue profile {} is not defined for this testbed".format(queueProfile))
 
+        if queueProfile == "wm_q_shared_quant_lossless":
+            triggerDrop = qosConfig[queueProfile]["pkts_num_trig_ingr_drp"]
+        else:
+            triggerDrop = qosConfig[queueProfile]["pkts_num_trig_egr_drp"]
+
         self.updateTestPortIdIp(dutConfig, get_src_dst_asic_and_duts)
 
         duthost = get_src_dst_asic_and_duts['dst_dut']
@@ -2263,6 +2268,7 @@ class TestQosSai(QosSaiBase):
             "pkts_num_leak_out": dutQosConfig["param"][portSpeedCableLength]["pkts_num_leak_out"],
             "cell_size": qosConfig[queueProfile]["cell_size"],
             "fill_margin": qosConfig[queueProfile]["fill_margin"],
+            "pkts_num_trig_drp": triggerDrop,
             "quant_thresholds": quant_thresholds,
             "hwsku": dutTestParams['hwsku'],
             "dut_asic": dutConfig["dutAsic"],

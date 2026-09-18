@@ -635,12 +635,16 @@ class QosParamCisco(object):
 
     def __define_q_shared_watermark_quant(self):
         quant_fill_margin = 10
+        packet_size = self.preferred_packet_size
+        packet_buffs = self.get_buffer_occupancy(packet_size)
         if self.should_autogen(["wm_q_shared_quant_lossless"]):
             lossless_params = {"dscp": 3,
                                "ecn": 1,
                                "queue": 3,
                                "pkts_num_fill_min": 0,
+                               "pkts_num_trig_ingr_drp": self.lossless_drop_thr // self.buffer_size // packet_buffs,
                                "fill_margin": quant_fill_margin,
+                               "packet_size": packet_size,
                                "cell_size": self.buffer_size}
             self.write_params("wm_q_shared_quant_lossless", lossless_params)
         if self.should_autogen(["wm_q_shared_quant_lossy"]):
@@ -648,7 +652,9 @@ class QosParamCisco(object):
                             "ecn": 1,
                             "queue": 0,
                             "pkts_num_fill_min": 0,
+                            "pkts_num_trig_egr_drp": self.lossy_drop_bytes // self.buffer_size // packet_buffs,
                             "fill_margin": quant_fill_margin,
+                            "packet_size": packet_size,
                             "cell_size": self.buffer_size}
             self.write_params("wm_q_shared_quant_lossy", lossy_params)
 
